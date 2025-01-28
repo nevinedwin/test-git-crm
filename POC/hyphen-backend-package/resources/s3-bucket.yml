@@ -1,0 +1,55 @@
+Resources:
+  ## Specifying the S3 Bucket
+    FrontEndBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.s3BucketName}
+        AccessControl: PublicRead
+        WebsiteConfiguration:
+          IndexDocument: index.html
+          ErrorDocument: index.html
+    ## Specifying the policies to make sure all files inside the Bucket are avaialble to CloudFront
+    FrontEndBucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket:
+          Ref: FrontEndBucket
+        PolicyDocument:
+          Statement:
+            - Sid: PublicReadGetObject
+              Effect: Allow
+              Principal: "*"
+              Action:
+              - s3:GetObject
+              Resource: arn:aws:s3:::${self:custom.s3BucketName}/*
+# Print out the name of the bucket that is created
+Outputs:
+  FrontEndBucketName:
+    Value:
+      Ref: FrontEndBucket
+
+# Resources:
+#   FrontEndBucket:
+#     Type: AWS::S3::Bucket
+#     Properties:
+#       # Set the CORS policy
+#       CorsConfiguration:
+#         CorsRules:
+#           -
+#             AllowedOrigins:
+#               - '*'
+#             AllowedHeaders:
+#               - '*'
+#             AllowedMethods:
+#               - GET
+#               - PUT
+#               - POST
+#               - DELETE
+#               - HEAD
+#             MaxAge: 3000
+
+# # Print out the name of the bucket that is created
+# Outputs:
+#   FrontEndBucketName:
+#     Value:
+#       Ref: FrontEndBucket

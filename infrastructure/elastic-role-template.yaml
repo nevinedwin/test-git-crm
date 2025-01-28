@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: "Hyphen CRM SAM Template"
+
+Parameters:
+  DynamoDBStreamARN:
+    Type: String
+  DynamoDBArn:
+    Type: String
+  StackNamePrefix:
+    Type: String
+  StageName:
+    Type: String
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+
+Resources:
+  ElasticRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: "ElasticRolePolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "arn:aws:logs:*:*:*"
+              - Effect: "Allow"
+                Action:
+                  - dynamodb:DescribeStream
+                  - dynamodb:GetRecords
+                  - dynamodb:GetShardIterator
+                  - dynamodb:ListStreams
+                Resource: !Ref DynamoDBStreamARN
+              - Effect: Allow
+                Action:
+                  - mobiletargeting:UpdateEndpoint
+                Resource: !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/endpoints/*"
+              - Effect: Allow
+                Action:
+                  - ses:VerifyEmailIdentity
+                  - ses:GetIdentityVerificationAttributes
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - mobiletargeting:SendMessages
+                Resource: !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*"
+              - Effect: Allow
+                Action:
+                  - mobiletargeting:ListTemplates
+                Resource: !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:templates"
+              - Effect: Allow
+                Action:
+                  - mobiletargeting:CreateEmailTemplate
+                  - mobiletargeting:DeleteEmailTemplate
+                  - mobiletargeting:GetEmailTemplate
+                  - mobiletargeting:UpdateEmailTemplate
+                Resource:
+                  - !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:templates/*/email"
+                  - !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:templates/*/EMAIL"
+              - Effect: Allow
+                Action:
+                  - dynamodb:Query
+                Resource:
+                  - !Ref DynamoDBArn
+                  - !Sub ${DynamoDBArn}/index/*
+              - Effect: Allow
+                Action:
+                  - execute-api:ManageConnections
+                Resource:
+                  - !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*/POST/@connections/*
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: !Sub "arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${StackNamePrefix}ElasticFailDLQ-${StageName}-sqs"
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+Outputs:
+  ElasticRoleARN:
+    Description: "ElasticRoleARN"
+    Value: !GetAtt ElasticRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-ElasticRoleARN"

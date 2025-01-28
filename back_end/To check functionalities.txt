@@ -1,0 +1,29 @@
+To check functionalities
+
+user.js
+
+resendConfirmationCode
+listAllUsers
+getUserPoolConfig
+getUserPoolList
+deleteUser
+
+search-lib.js
+sendRequest
+
+dynamodb-lib.js
+db operations
+
+endpointcount.js
+getSegmentCount
+isExportJobComplete
+listExportedObjects
+getObjectS3
+
+elastic.js
+sendMessageToSQS
+processEndpoints
+getRealtorsAssoWithMetro
+
+cognitoverifyemail.js
+main > confirmSignUp

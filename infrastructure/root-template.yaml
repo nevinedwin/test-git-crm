@@ -1,0 +1,1678 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: "Hyphen CRM Application"
+
+Parameters:
+  StageName:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: "/CloudFormation/Environment/Stage"
+  SSLCertARN:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: "/CRM/Application/SSLCertARN"
+  APISSLCertARN:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: "/CRM/Application/APISSLCertARN"
+  EnDCryptKeyARN:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: "/CRM/Application/EnDCryptKeyARN"
+  CreateSFTPServer:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: "/CRM/Application/CreateSFTPServer"
+  VpcId:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: "/CRM/Application/VpcId"
+  SubnetIds:
+    Type: AWS::SSM::Parameter::Value<List<String>>
+    Default: "/CRM/Application/SubnetIds"
+  ElasticIPAllocationIds:
+    Type: AWS::SSM::Parameter::Value<List<String>>
+    Default: "/CRM/Application/ElasticIPAllocationIds"
+  # CongitoSESEmailId:
+  #   Type: AWS::SSM::Parameter::Value<String>
+  #   Default: "/CRM/Application/CongitoSESEmailId"
+  StackName:
+    Type: String
+    Default: "aws-crm"
+  StackNamePrefix:
+    Type: String
+    Default: "aws-crm-"
+  MessagingBucketName:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: "/CRM/Messaging/LogBucket"
+  firehoseESIndex:
+    Type: String
+    Default: "crmeskinesisindex"
+  pinpointESData:
+    Type: String
+    Default: "pinpointesdata"
+  IsEnableCustomDomain:
+    Type: String
+    Default: "true"
+  IssueNumber:
+    Type: String
+    Default: ""
+  ApplicationTag:
+    Type: String
+    Default: crm
+  OwnerTag:
+    Type: String
+    Default: contractor
+  PurposeTag:
+    Type: String
+    Default: deployed
+  # SESIPPoolName:
+  #   Type: AWS::SSM::Parameter::Value<String>
+  #   Default: "/CRM/Application/SESIPPoolName"
+  # S3CRRRegionName:
+  #   Type: String
+  #   Default: us-east-1
+  # globalTableRegion:
+  #   Type: String
+  #   Default: us-east-1
+# Conditions:
+#   IsProd: !Equals [!Ref StageName, prod]
+Conditions:
+  EnableCustomDomain: !Equals [!Ref IsEnableCustomDomain, "true"]
+  EnableSFTPServer: !Equals [!Ref CreateSFTPServer, "yes"]
+  EnableSESFailure:
+    !Or [!Equals [!Ref StageName, "prod"], !Equals [!Ref StackName, "crm-test"]]
+  # IsUAT: !Equals [!Ref StageName, "uat"]
+  # IsProd: !Equals [!Ref StageName, "prod"]
+  # IsDev: !Equals [!Ref StageName, "dev"]
+  # EnableSFTPServer: !Or
+  #   - !Condition IsUAT
+  #   - !Condition IsProd
+Mappings:
+  DomainName:
+    dev:
+      URL: devcrm.hyphensolutions.com
+    qa:
+      URL: qacrm.hyphensolutions.com
+    uat:
+      URL: uatcrm.hyphensolutions.com
+    prod:
+      URL: crm.hyphensolutions.com
+  AssetsDomainName:
+    dev:
+      URL: assets-devcrm.hyphensolutions.com
+    qa:
+      URL: assets-qacrm.hyphensolutions.com
+    uat:
+      URL: assets-uatcrm.hyphensolutions.com
+    prod:
+      URL: assets-crm.hyphensolutions.com
+  APIDomainName:
+    dev:
+      URL: api-crm-dev.hyphensolutions.com
+    qa:
+      URL: api-crm-qa.hyphensolutions.com
+    uat:
+      URL: api-crm-uat.hyphensolutions.com
+    prod:
+      URL: api-crm.hyphensolutions.com
+  ExtAPIDomainName:
+    dev:
+      URL: api-crm-external-dev.hyphensolutions.com
+    qa:
+      URL: api-crm-external-qa.hyphensolutions.com
+    uat:
+      URL: api-crm-external-uat.hyphensolutions.com
+    prod:
+      URL: api-crm-external.hyphensolutions.com
+  SFTPCustomDomain:
+    dev:
+      URL: ftp-devcrm.hyphensolutions.com
+    qa:
+      URL: ftp-qacrm.hyphensolutions.com
+    uat:
+      URL: ftp-uatcrm.hyphensolutions.com
+    prod:
+      URL: ftp-crm.hyphensolutions.com
+  ElasticSearchOptions:
+    dev:
+      InstanceType: t2.small.elasticsearch
+      InstanceCount: 2
+      MasterEnabled: "false"
+      DedicatedMasterType: c5.large.elasticsearch
+      DedicatedMasterCount: 0
+      EBSVolumeSize: 10
+      EBSVolumeType: gp2
+      AvailabilityZoneCount: 2
+      ZoneAwarenessEnabled: "true"
+    qa:
+      InstanceType: t2.small.elasticsearch
+      InstanceCount: 2
+      MasterEnabled: "false"
+      DedicatedMasterType: c5.large.elasticsearch
+      DedicatedMasterCount: 0
+      EBSVolumeSize: 10
+      EBSVolumeType: gp2
+      AvailabilityZoneCount: 2
+      ZoneAwarenessEnabled: "true"
+    uat:
+      InstanceType: t2.small.elasticsearch
+      InstanceCount: 2
+      MasterEnabled: "false"
+      DedicatedMasterType: c5.large.elasticsearch
+      DedicatedMasterCount: 0
+      EBSVolumeSize: 10
+      EBSVolumeType: gp2
+      AvailabilityZoneCount: 2
+      ZoneAwarenessEnabled: "true"
+    prod:
+      InstanceType: m5.large.elasticsearch
+      InstanceCount: 3
+      MasterEnabled: "true"
+      DedicatedMasterType: c5.large.elasticsearch
+      DedicatedMasterCount: 3
+      EBSVolumeSize: 100
+      EBSVolumeType: gp2
+      AvailabilityZoneCount: 3
+      ZoneAwarenessEnabled: "true"
+
+Resources:
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      # Generate a name based on the stage
+      UserPoolName: !Sub "${StackNamePrefix}user-pool-${StageName}-cup"
+      # Set email as an alias
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Schema:
+        - AttributeDataType: String
+          Mutable: true
+          Name: hb_id
+      # EmailConfiguration:
+      #   EmailSendingAccount: DEVELOPER
+      #   From: !Sub ${CongitoSESEmailId}
+      #   ReplyToEmailAddress: !Sub ${CongitoSESEmailId}
+      #   SourceArn: !Sub arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${CongitoSESEmailId}
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_LINK
+        # EmailMessageByLink: "Please Click The Link To Get Started ! {##Verify Account##}"
+        # EmailSubjectByLink: "Hyphen Solutions - Verify Account"
+      LambdaConfig:
+        CustomMessage: !GetAtt CognitoTriggerStack.Outputs.CognitoCustomMessageLambdaArn
+      UserPoolTags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cognito
+
+  CongtioUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub hyphen-crm${IssueNumber}-${StageName}
+      UserPoolId: !Ref CognitoUserPool
+
+  LambdaCongitoCustomMessagePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: "lambda:InvokeFunction"
+      FunctionName: !GetAtt CognitoTriggerStack.Outputs.CognitoCustomMessageLambdaArn
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt CognitoUserPool.Arn
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      # Generate an app client name based on the stage
+      ClientName: !Sub "${StackNamePrefix}user-pool-client-${StageName}-cup"
+      UserPoolId: !Ref CognitoUserPool
+      ExplicitAuthFlows:
+        # - ADMIN_NO_SRP_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      RefreshTokenValidity: 30
+      SupportedIdentityProviders:
+        - COGNITO
+
+  CognitoIdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    Properties:
+      # Generate a name based on the stage
+      IdentityPoolName: !Sub "${StackNamePrefix}identitypool-${StageName}-cip"
+      # Don't allow unathenticated users
+      AllowUnauthenticatedIdentities: false
+      # Link to our User Pool
+      CognitoIdentityProviders:
+        - ClientId:
+            Ref: CognitoUserPoolClient
+          ProviderName:
+            Fn::GetAtt: ["CognitoUserPool", "ProviderName"]
+
+  # IAM roles
+  CognitoIdentityPoolRoles:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    Properties:
+      IdentityPoolId:
+        Ref: CognitoIdentityPool
+      Roles:
+        authenticated:
+          Fn::GetAtt: [CognitoAuthRole, Arn]
+
+  # IAM role used for authenticated users
+  CognitoAuthRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Federated: "cognito-identity.amazonaws.com"
+            Action:
+              - "sts:AssumeRoleWithWebIdentity"
+            Condition:
+              StringEquals:
+                "cognito-identity.amazonaws.com:aud":
+                  Ref: CognitoIdentityPool
+              "ForAnyValue:StringLike":
+                "cognito-identity.amazonaws.com:amr": authenticated
+      Policies:
+        - PolicyName: "CognitoAuthorizedPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - cognito-identity:*
+                Resource: !Sub arn:aws:cognito-identity:${AWS::Region}:${AWS::AccountId}:identitypool/${CognitoIdentityPool}
+
+              # Allow users to invoke our API
+              - Effect: "Allow"
+                Action:
+                  - "execute-api:Invoke"
+                Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FunctionStack.Outputs.HyphenCrmServerless}/*"
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  FirehoseRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "firehose.amazonaws.com"
+            Action: "sts:AssumeRole"
+            Condition:
+              StringEquals:
+                "sts:ExternalId": !Ref AWS::AccountId
+      Path: "/"
+      Policies:
+        - PolicyName: "FirehoseRolePolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - s3:AbortMultipartUpload
+                  - s3:GetBucketLocation
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:ListBucketMultipartUploads
+                  - s3:PutObject
+                Resource:
+                  - !Sub ${FrontEndBucketStack.Outputs.FrontEndBucketARN}
+                  - !Sub ${FrontEndBucketStack.Outputs.FrontEndBucketARN}/*
+              - Effect: "Allow"
+                Action:
+                  - es:DescribeElasticsearchDomain
+                  - es:DescribeElasticsearchDomains
+                  - es:DescribeElasticsearchDomainConfig
+                  - es:ESHttpPost
+                  - es:ESHttpPut
+                Resource:
+                  - !Sub ${ElasticStack.Outputs.ElasticDomainARN}
+                  - !Sub ${ElasticStack.Outputs.ElasticDomainARN}/*
+              - Effect: "Allow"
+                Action:
+                  - es:ESHttpGet
+                Resource:
+                  - !Sub ${ElasticStack.Outputs.ElasticDomainARN}/_all/_settings
+                  - !Sub ${ElasticStack.Outputs.ElasticDomainARN}/_cluster/stats
+                  - !Sub ${ElasticStack.Outputs.ElasticDomainARN}/${firehoseESIndex}*/_mapping/${pinpointESData}
+                  - !Sub ${ElasticStack.Outputs.ElasticDomainARN}/_nodes
+                  - !Sub ${ElasticStack.Outputs.ElasticDomainARN}/_nodes/stats
+                  - !Sub ${ElasticStack.Outputs.ElasticDomainARN}/_nodes/*/stats
+                  - !Sub ${ElasticStack.Outputs.ElasticDomainARN}/_stats
+                  - !Sub ${ElasticStack.Outputs.ElasticDomainARN}/${firehoseESIndex}*/_stats
+              - Effect: "Allow"
+                Action:
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/kinesisfirehose/${StackNamePrefix}firehose-${StageName}-kf/ElasticsearchDelivery
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/kinesisfirehose/${StackNamePrefix}firehose-${StageName}-kf/S3Delivery
+              - Effect: "Allow"
+                Action:
+                  - lambda:InvokeFunction
+                  - lambda:GetFunctionConfiguration
+                Resource: !Sub ${FirehoseLambdaStack.Outputs.HyphenCRMFirehoseTransformARN}:$LATEST
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  # S3CRRRole:
+  #   Type: AWS::IAM::Role
+  #   Properties:
+  #     AssumeRolePolicyDocument:
+  #       Version: "2012-10-17"
+  #       Statement:
+  #         - Effect: Allow
+  #           Principal:
+  #             Service:
+  #               - lambda.amazonaws.com
+  #           Action:
+  #             - sts:AssumeRole
+  #     Path: /
+  #     Policies:
+  #       - PolicyName: root
+  #         PolicyDocument:
+  #           Version: "2012-10-17"
+  #           Statement:
+  #             - Effect: Allow
+  #               Action:
+  #                 - logs:CreateLogGroup
+  #                 - logs:CreateLogStream
+  #                 - logs:PutLogEvents
+  #               Resource: arn:aws:logs:*:*:*
+  #             - Effect: Allow
+  #               Action:
+  #                 - s3:CreateBucket
+  #                 - s3:DeleteBucket
+  #                 - s3:PutBucketVersioning
+  #                 - s3:PutBucketTagging
+  #                 - s3:GetBucketVersioning
+  #                 - s3:PutBucketWebsite
+  #                 - s3:DeleteBucketWebsite
+  #                 - s3:PutBucketAcl
+  #                 - s3:ListBucketVersions
+  #                 - s3:GetBucketPolicy
+  #                 - s3:GetBucketAcl
+  #                 - s3:PutBucketPolicy
+  #                 - s3:GetBucketWebsite
+  #                 - s3:DeleteBucketPolicy
+  #                 - s3:GetBucketTagging
+  #               Resource: arn:aws:s3:::*
+  #     Tags:
+  #       - Key: Environment
+  #         Value: !Ref StageName
+  #       - Key: Application
+  #         Value: !Ref ApplicationTag
+  #       - Key: Owner
+  #         Value: !Ref OwnerTag
+  #       - Key: Purpose
+  #         Value: !Ref PurposeTag
+  #       - Key: Service
+  #         Value: iam
+
+  # GlobalTablesRole:
+  #   # Condition: IsProd
+  #   Type: AWS::IAM::Role
+  #   Properties:
+  #     AssumeRolePolicyDocument:
+  #       Version: "2012-10-17"
+  #       Statement:
+  #         - Effect: Allow
+  #           Principal:
+  #             Service:
+  #               - lambda.amazonaws.com
+  #           Action:
+  #             - sts:AssumeRole
+  #     Path: /
+  #     Policies:
+  #       - PolicyName: root
+  #         PolicyDocument:
+  #           Version: "2012-10-17"
+  #           Statement:
+  #             - Effect: Allow
+  #               Action:
+  #                 - logs:CreateLogGroup
+  #                 - logs:CreateLogStream
+  #                 - logs:PutLogEvents
+  #               Resource: arn:aws:logs:*:*:*
+  #             - Effect: Allow
+  #               Action:
+  #                 - dynamodb:CreateTable
+  #                 - dynamodb:DescribeTable
+  #                 - dynamodb:DescribeLimits
+  #                 - dynamodb:UpdateTable
+  #                 - dynamodb:CreateTableReplica
+  #                 - dynamodb:DeleteTable
+  #                 - dynamodb:Scan
+  #                 - dynamodb:Query
+  #                 - dynamodb:UpdateItem
+  #                 - dynamodb:PutItem
+  #                 - dynamodb:GetItem
+  #                 - dynamodb:DeleteItem
+  #                 - dynamodb:BatchWriteItem
+  #                 - dynamodb:DeleteTableReplica
+  #                 - iam:CreateServiceLinkedRole
+  #               Resource: "*"
+  #     Tags:
+  #       - Key: Environment
+  #         Value: !Ref StageName
+  #       - Key: Application
+  #         Value: !Ref ApplicationTag
+  #       - Key: Owner
+  #         Value: !Ref OwnerTag
+  #       - Key: Purpose
+  #         Value: !Ref PurposeTag
+  #       - Key: Service
+  #         Value: iam
+
+  AccessIdentityStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: access-identity-template.yaml
+      Parameters:
+        StackNamePrefix: !Ref StackNamePrefix
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  # AutoScaleStack:
+  #   Type: AWS::Serverless::Application
+  #   Properties:
+  #     Location: auto-scale-template.yaml
+  #     Parameters:
+  #       DynamoDBTableName: !GetAtt DynamoDB.Outputs.DynamoDBTableName
+  #       ScalingRoleARN: !GetAtt ScaleRoleStack.Outputs.ScalingRoleARN
+  #       entitiesTableByEntityAndId: !Sub ${StackNamePrefix}byEntityAndIdIndex-${StageName}-db
+  #       entitiesTableByDataAndEntity: !Sub ${StackNamePrefix}byDataAndEntityIndex-${StageName}-db
+  #     Tags:
+  #       Environment: !Ref StageName
+  #       Application: !Ref ApplicationTag
+  #       Owner: !Ref OwnerTag
+  #       Purpose: !Ref PurposeTag
+  #       Service: cloudformation
+
+  CampaignRoleStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: campaign-role-template.yaml
+      Parameters:
+        DynamoDBArn: !GetAtt DynamoDB.Outputs.DynamoDBArn
+        StageName: !Ref StageName
+        ElasticsearchDomain: !GetAtt ElasticStack.Outputs.ElasticsearchDomain
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  CloudFrontStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: cloudfront-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        SSLCertARN: !Ref SSLCertARN
+        Alias: !FindInMap [DomainName, !Ref StageName, URL]
+        AssetsAlias: !FindInMap [AssetsDomainName, !Ref StageName, URL]
+        FrontEndBucketDomainName: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucketDomainName
+        CRMOriginAccessIdentity: !GetAtt AccessIdentityStack.Outputs.CRMOriginAccessIdentity
+        HyphenCrmServerless: !GetAtt FunctionStack.Outputs.HyphenCrmServerless
+        FileManagerRegionalDomainName: !GetAtt FileManagerBucketStack.Outputs.FileManagerBucketDomainName
+        # FileManagerRegionalDomainName: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucketDomainName
+        IsEnableCustomDomain: !Ref IsEnableCustomDomain
+        FileManagerOriginAccessIdentity: !GetAtt AccessIdentityStack.Outputs.FileManagerAccessIdentity
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  DynamoDB:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: dynamodb-template.yaml
+      Parameters:
+        entitiesTableName: !Sub ${StackNamePrefix}entities-${StageName}-db
+        entitiesTableByEntityAndId: !Sub ${StackNamePrefix}byEntityAndIdIndex-${StageName}-db
+        entitiesTableByDataAndEntity: !Sub ${StackNamePrefix}byDataAndEntityIndex-${StageName}-db
+        StageName: !Ref StageName
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  # EntitiesGlobalTable:
+  #   # Condition: IsProd
+  #   Type: "Custom::EntitiesGlobalTable"
+  #   Properties:
+  #     ServiceToken: !GetAtt FunctionStack.Outputs.GlobalTablesCustomLambdaArn
+  #     GlobalTableName: !Sub ${StackNamePrefix}entities-${StageName}-db
+  #     globalTableRegion: !Ref globalTableRegion
+
+  ElasticRoleStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: elastic-role-template.yaml
+      Parameters:
+        DynamoDBArn: !GetAtt DynamoDB.Outputs.DynamoDBArn
+        DynamoDBStreamARN: !GetAtt DynamoDB.Outputs.DynamoDBStreamARN
+        StackNamePrefix: !Ref StackNamePrefix
+        StageName: !Ref StageName
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  ElasticStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: elastic-template.yaml
+      Parameters:
+        elasticDomainName: !Sub ${StackNamePrefix}entities-${StageName}-es
+        ElasticRoleARN: !GetAtt ElasticRoleStack.Outputs.ElasticRoleARN
+        ElasticInstanceType:
+          !FindInMap [ElasticSearchOptions, !Ref StageName, InstanceType]
+        ElasticInstanceCount:
+          !FindInMap [ElasticSearchOptions, !Ref StageName, InstanceCount]
+        MasterEnabled:
+          !FindInMap [ElasticSearchOptions, !Ref StageName, MasterEnabled]
+        DedicatedMasterType:
+          !FindInMap [ElasticSearchOptions, !Ref StageName, DedicatedMasterType]
+        DedicatedMasterCount:
+          !FindInMap [
+            ElasticSearchOptions,
+            !Ref StageName,
+            DedicatedMasterCount,
+          ]
+        EBSVolumeSize:
+          !FindInMap [ElasticSearchOptions, !Ref StageName, EBSVolumeSize]
+        EBSVolumeType:
+          !FindInMap [ElasticSearchOptions, !Ref StageName, EBSVolumeType]
+        AvailabilityZoneCount:
+          !FindInMap [
+            ElasticSearchOptions,
+            !Ref StageName,
+            AvailabilityZoneCount,
+          ]
+        ZoneAwarenessEnabled:
+          !FindInMap [
+            ElasticSearchOptions,
+            !Ref StageName,
+            ZoneAwarenessEnabled,
+          ]
+        StageName: !Ref StageName
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  FileManagerBucketStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: file-manager-bucket-template.yaml
+      Parameters:
+        FileManagerS3Name: !Sub ${StackNamePrefix}filemanager-${StageName}-s3
+        FileManagerCanonicalUserId: !GetAtt AccessIdentityStack.Outputs.FileManagerCanonicalUserId
+        DomainName: !Sub
+          - https://${domain}
+          - domain: !FindInMap [DomainName, !Ref StageName, URL]
+        IsEnableCustomDomain: !Ref IsEnableCustomDomain
+        StageName: !Ref StageName
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  FirehoseBucketStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: firehose-bucket-template.yaml
+      Parameters:
+        firehoseBackupS3Name: !Sub ${StackNamePrefix}firehosebackup-${StageName}-s3
+        StageName: !Ref StageName
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  FirehoseLambdaStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: FirehoseLambdaStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        HyphenLambdaManagedPolicy: !GetAtt LambdaPolicyStack.Outputs.HyphenLambdaManagedPolicy
+        StackName: !Ref StackName
+        pinpointESData: !Ref pinpointESData
+        firehoseESIndex: !Ref firehoseESIndex
+        ElasticsearchDomainEndpoint: !GetAtt ElasticStack.Outputs.ElasticsearchDomainEndpoint
+        ElasticsearchDomain: !GetAtt ElasticStack.Outputs.ElasticsearchDomain
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  FirehoseStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: firehose-template.yaml
+      Parameters:
+        HyphenCRMFirehoseName: !Sub ${StackNamePrefix}firehose-${StageName}-kf
+        ElasticsearchDomainARN: !GetAtt ElasticStack.Outputs.ElasticsearchDomainARN
+        firehoseESIndex: !Ref firehoseESIndex
+        HyphenCRMFirehoseTransformARN: !GetAtt FirehoseLambdaStack.Outputs.HyphenCRMFirehoseTransformARN
+        FirehoseRoleARN: !GetAtt FirehoseRole.Arn
+        # FirehoseBackupBucketARN: !GetAtt FirehoseBucketStack.Outputs.FirehoseBackupBucketARN
+        # FirehoseBackupBucketARN: !GetAtt FileManagerBucketStack.Outputs.FileManagerBucketARN
+        FirehoseBackupBucketARN: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucketARN
+        pinpointESData: !Ref pinpointESData
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  FrontEndBucketStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: frontend-bucket-template.yaml
+      Parameters:
+        # StageName: !Ref StageName
+        s3BucketName: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+        CFCanonicalUserId: !GetAtt AccessIdentityStack.Outputs.CFCanonicalUserId
+        FileManagerS3Name: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+        DomainName: !Sub
+          - https://${domain}
+          - domain: !FindInMap [DomainName, !Ref StageName, URL]
+        IsEnableCustomDomain: !Ref IsEnableCustomDomain
+        # s3CRRBucketName: !Sub ${StackNamePrefix}frontendcrr-${StageName}-s3
+        # S3CRRFunctionArn: !GetAtt FunctionStack.Outputs.S3CRRCustomLambdaArn
+        # S3CRRRegion: !Ref S3CRRRegionName
+        StageName: !Ref StageName
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  ExternalAPIStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: ExternalAPIStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        HyphenLambdaManagedPolicy: !GetAtt LambdaPolicyStack.Outputs.HyphenLambdaManagedPolicy
+        # IsEnableCustomDomain: !Ref IsEnableCustomDomain
+        IssueNumber: !Ref IssueNumber
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  CognitoTriggerStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: CognitoTriggerStack-template.yaml
+      Parameters:
+        StackNamePrefix: !Ref StackNamePrefix
+        StackName: !Ref StackName
+        IsEnableCustomDomain: !Ref IsEnableCustomDomain
+        ExtAPIDomainName: !FindInMap [ExtAPIDomainName, !Ref StageName, URL]
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        StageName: !Ref StageName
+        HyphenLambdaManagedPolicy: !GetAtt LambdaPolicyStack.Outputs.HyphenLambdaManagedPolicy
+        EnDCryptKeyARN: !Ref EnDCryptKeyARN
+        pinpointESData: !Ref pinpointESData
+        firehoseESIndex: !Ref firehoseESIndex
+        ElasticsearchDomainEndpoint: !GetAtt ElasticStack.Outputs.ElasticsearchDomainEndpoint
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  FunctionStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: FunctionStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        pinpointESData: !Ref pinpointESData
+        firehoseESIndex: !Ref firehoseESIndex
+        StackNamePrefix: !Ref StackNamePrefix
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        CognitoUserPoolARN: !GetAtt CognitoUserPool.Arn
+        CognitoUserPool: !Ref CognitoUserPool
+        CognitoUserPoolClient: !Ref CognitoUserPoolClient
+        ElasticRoleARN: !GetAtt ElasticRoleStack.Outputs.ElasticRoleARN
+        CampaignRoleARN: !GetAtt CampaignRoleStack.Outputs.CampaignRoleARN
+        HyphenLambdaManagedPolicy: !GetAtt LambdaPolicyStack.Outputs.HyphenLambdaManagedPolicy
+        HyphenCRMFirehoseARN: !GetAtt FirehoseStack.Outputs.HyphenCRMFirehoseARN
+        FirehosePinpointRoleARN: !GetAtt PinpointRoleStack.Outputs.FirehosePinpointRoleARN
+        DynamoDBStreamARN: !GetAtt DynamoDB.Outputs.DynamoDBStreamARN
+        ElasticsearchDomainEndpoint: !GetAtt ElasticStack.Outputs.ElasticsearchDomainEndpoint
+        ElasticsearchDomain: !GetAtt ElasticStack.Outputs.ElasticsearchDomain
+        # FileManagerBucketARN: !GetAtt FileManagerBucketStack.Outputs.FileManagerBucketARN
+        FileManagerBucketARN: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucketARN
+        # FileManagerRegionalDomainName: !GetAtt FileManagerBucketStack.Outputs.FileManagerBucketDomainName
+        FileManagerRegionalDomainName: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucketDomainName
+        DynamoDBArn: !GetAtt DynamoDB.Outputs.DynamoDBArn
+        APISSLCertARN: !Ref APISSLCertARN
+        APIDomainName: !FindInMap [APIDomainName, !Ref StageName, URL]
+        ExtAPIDomainName: !FindInMap [ExtAPIDomainName, !Ref StageName, URL]
+        # S3CRRRoleArn: !GetAtt S3CRRRole.Arn
+        # GlobalTablesRoleArn:
+        #   !GetAtt GlobalTablesRole.Arn
+        # !If [IsProd, !GetAtt GlobalTablesRole.Arn, !Ref "AWS::NoValue"]
+        CognitoUserPoolExtArn: !GetAtt ExternalAPIStack.Outputs.UserPoolIdExternalArn
+        ExternalUserPoolId: !GetAtt ExternalAPIStack.Outputs.UserPoolIdExternal
+        UserPoolId: !Ref CognitoUserPool
+        ClientID: !GetAtt ExternalAPIStack.Outputs.UserPoolClientIdExternal
+        ResponseType: !GetAtt ExternalAPIStack.Outputs.ResponseType
+        RedirectURI: !GetAtt ExternalAPIStack.Outputs.RedirectURI
+        Scope: !GetAtt ExternalAPIStack.Outputs.Scope
+        AuthDomain: !GetAtt ExternalAPIStack.Outputs.UserPoolDomainNameExternal
+        EnDCryptKeyARN: !Ref EnDCryptKeyARN
+        IsEnableCustomDomain: !Ref IsEnableCustomDomain
+        StackName: !Ref StackName
+        DomainName: !FindInMap [DomainName, !Ref StageName, URL]
+        LeadAPIStateMachineArn: !GetAtt LeadAPIStack.Outputs.LeadAPIStateMachineArn
+        DataExportStateMachineArn: !GetAtt DataMigrationStack.Outputs.DataExportStateMachineArn
+        DataImportStateMachineArn: !GetAtt DataMigrationStack.Outputs.DataImportStateMachineArn
+        ReportsStateMachineArn: !GetAtt ReportsStack.Outputs.ReportsStateMachineArn
+        CleanupStateMachineArn: !GetAtt CleanupStack.Outputs.CleanupStateMachineArn
+        StageDateStateMachineArn: !GetAtt StageDateStack.Outputs.StageDateStateMachineArn
+        CustomerImportStateMachineArn: !GetAtt CustomerImportStack.Outputs.CustomerImportStateMachineArn
+        NoteImportStateMachineArn: !GetAtt NotesImportStack.Outputs.NoteImportStateMachineArn
+        CobuyerImportStateMachineArn: !GetAtt CobuyerImportStack.Outputs.CobuyerImportStateMachineArn
+        RealtorImportStateMachineArn: !GetAtt RealtorImportStack.Outputs.RealtorImportStateMachineArn
+        EmailActivityUpdateStateMachineArn: !GetAtt EmailActivityUpdateStack.Outputs.EmailActivityUpdateStateMachineArn
+        EndpointStateMachineArn: !GetAtt UpdateEndpointStack.Outputs.EndpointStateMachineArn
+        DeleteProfileDataStateMachineArn: !GetAtt DeleteProfileDataStack.Outputs.DeleteProfileDataStateMachineArn
+        BuilderDeleteStateMachineArn: !GetAtt BuilderDeleteStack.Outputs.BuilderDeleteStateMachineArn
+        HyphenCRMWebSocketPostURL: !GetAtt SocketServiceStack.Outputs.HyphenCRMWebSocketsGatewayPOSTEndpoint
+        HyphenCRMWebSocketURL: !GetAtt SocketServiceStack.Outputs.HyphenCRMWebSocketsGatewayEndpoint
+        HyphenCRMWebSocketsGateway: !GetAtt SocketServiceStack.Outputs.HyphenCRMWebSocketsGateway
+        DeleteAgenciesInBulkStateMachineArn: !GetAtt BulkDeleteAgenciesStack.Outputs.DeleteAgenciesInBulkStateMachineArn
+        TransferServerId:
+          !If [
+            EnableSFTPServer,
+            !GetAtt LeadTransferStack.Outputs.HyphenCRMTransferServerId,
+            "novalue",
+          ]
+        TransferServerUserRoleARN:
+          !If [
+            EnableSFTPServer,
+            !GetAtt LeadTransferStack.Outputs.TransferServerUserRoleARN,
+            "novalue",
+          ]
+        TransferImportPostProcessingRoleARN:
+          !If [
+            EnableSFTPServer,
+            !GetAtt LeadTransferStack.Outputs.TransferImportPostProcessingRoleARN,
+            "novalue",
+          ]
+        TransferWorkflowExecutionRoleARN:
+          !If [
+            EnableSFTPServer,
+            !GetAtt LeadTransferStack.Outputs.TransferWorkflowExecutionRoleARN,
+            "novalue",
+          ]
+        TransferWorkflowLambdaARN:
+          !If [
+            EnableSFTPServer,
+            !GetAtt LeadTransferStack.Outputs.TransferWorkflowLambdaARN,
+            "novalue",
+          ]
+        TransferWorkflowExceptionLambdaARN:
+          !If [
+            EnableSFTPServer,
+            !GetAtt LeadTransferStack.Outputs.TransferWorkflowExceptionLambdaARN,
+            "novalue",
+          ]
+        SFTPCustomDomain: !FindInMap [SFTPCustomDomain, !Ref StageName, URL]
+        CreateSFTPServer: !Ref CreateSFTPServer
+        HyphenCRMWebSocketsGatewayPOSTEndpoint: !GetAtt SocketServiceStack.Outputs.HyphenCRMWebSocketsGatewayPOSTEndpoint
+        SESConfigSetName:
+          !If [
+            EnableSESFailure,
+            !GetAtt SESFailureConfigStack.Outputs.SESConfigSetName,
+            "novalue",
+          ]
+        # SESIPPoolName: !Ref SESIPPoolName
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  LeadAPIStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: LeadAPIStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        HyphenLambdaManagedPolicy: !GetAtt LambdaPolicyStack.Outputs.HyphenLambdaManagedPolicy
+        ElasticsearchDomainEndpoint: !GetAtt ElasticStack.Outputs.ElasticsearchDomainEndpoint
+        ElasticsearchDomain: !GetAtt ElasticStack.Outputs.ElasticsearchDomain
+        # FileManagerBucketARN: !GetAtt FileManagerBucketStack.Outputs.FileManagerBucketARN
+        FileManagerBucketARN: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucketARN
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  AnalyticsStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: AnalyticsStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        HyphenLambdaManagedPolicy: !GetAtt LambdaPolicyStack.Outputs.HyphenLambdaManagedPolicy
+        ElasticsearchDomainEndpoint: !GetAtt ElasticStack.Outputs.ElasticsearchDomainEndpoint
+        FileManagerBucketARN: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucketARN
+        BuildersApiFunctionArn: !GetAtt FunctionStack.Outputs.BuildersApiFunctionArn
+        CustomersApiFunctionArn: !GetAtt FunctionStack.Outputs.CustomersApiFunctionArn
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  CustomerImportStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: CustomerImportStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        HyphenLambdaManagedPolicy: !GetAtt LambdaPolicyStack.Outputs.HyphenLambdaManagedPolicy
+        ElasticsearchDomainEndpoint: !GetAtt ElasticStack.Outputs.ElasticsearchDomainEndpoint
+        ElasticsearchDomain: !GetAtt ElasticStack.Outputs.ElasticsearchDomain
+        FileManagerBucketARN: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucketARN
+        StackName: !Ref StackName
+        # BuildersApiFunctionArn: !GetAtt FunctionStack.Outputs.BuildersApiFunctionArn
+        # SearchApiFunctionArn: !GetAtt FunctionStack.Outputs.SearchApiFunctionArn
+        # ActivitiesApiFunctionArn: !GetAtt FunctionStack.Outputs.ActivitiesApiFunctionArn
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  NotesImportStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: NotesImportStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        HyphenLambdaManagedPolicy: !GetAtt LambdaPolicyStack.Outputs.HyphenLambdaManagedPolicy
+        ElasticsearchDomainEndpoint: !GetAtt ElasticStack.Outputs.ElasticsearchDomainEndpoint
+        ElasticsearchDomain: !GetAtt ElasticStack.Outputs.ElasticsearchDomain
+        FileManagerBucketARN: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucketARN
+        StackName: !Ref StackName
+        # BuildersApiFunctionArn: !GetAtt FunctionStack.Outputs.BuildersApiFunctionArn
+        # SearchApiFunctionArn: !GetAtt FunctionStack.Outputs.SearchApiFunctionArn
+        # ActivitiesApiFunctionArn: !GetAtt FunctionStack.Outputs.ActivitiesApiFunctionArn
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  CobuyerImportStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: CobuyerImportStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        HyphenLambdaManagedPolicy: !GetAtt LambdaPolicyStack.Outputs.HyphenLambdaManagedPolicy
+        ElasticsearchDomainEndpoint: !GetAtt ElasticStack.Outputs.ElasticsearchDomainEndpoint
+        ElasticsearchDomain: !GetAtt ElasticStack.Outputs.ElasticsearchDomain
+        FileManagerBucketARN: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucketARN
+        StackName: !Ref StackName
+        # BuildersApiFunctionArn: !GetAtt FunctionStack.Outputs.BuildersApiFunctionArn
+        # SearchApiFunctionArn: !GetAtt FunctionStack.Outputs.SearchApiFunctionArn
+        # ActivitiesApiFunctionArn: !GetAtt FunctionStack.Outputs.ActivitiesApiFunctionArn
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+  
+  RealtorImportStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: RealtorImportStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        HyphenLambdaManagedPolicy: !GetAtt LambdaPolicyStack.Outputs.HyphenLambdaManagedPolicy
+        ElasticsearchDomainEndpoint: !GetAtt ElasticStack.Outputs.ElasticsearchDomainEndpoint
+        ElasticsearchDomain: !GetAtt ElasticStack.Outputs.ElasticsearchDomain
+        FileManagerBucketARN: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucketARN
+        StackName: !Ref StackName
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  StageDateStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: StageDateStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        HyphenLambdaManagedPolicy: !GetAtt LambdaPolicyStack.Outputs.HyphenLambdaManagedPolicy
+        ElasticsearchDomainEndpoint: !GetAtt ElasticStack.Outputs.ElasticsearchDomainEndpoint
+        ElasticsearchDomain: !GetAtt ElasticStack.Outputs.ElasticsearchDomain
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  EmailActivityUpdateStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: EmailActivityUpdateStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        HyphenLambdaManagedPolicy: !GetAtt LambdaPolicyStack.Outputs.HyphenLambdaManagedPolicy
+        ElasticsearchDomainEndpoint: !GetAtt ElasticStack.Outputs.ElasticsearchDomainEndpoint
+        # ElasticsearchDomain: !GetAtt ElasticStack.Outputs.ElasticsearchDomain
+        # ActivitiesApiFunctionArn: !GetAtt FunctionStack.Outputs.ActivitiesApiFunctionArn
+        FileManagerBucketARN: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucketARN
+        # BuildersApiFunctionArn: !GetAtt FunctionStack.Outputs.BuildersApiFunctionArn
+        StackName: !Ref StackName
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  UpdateEndpointStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: UpdateEndpointStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        HyphenLambdaManagedPolicy: !GetAtt LambdaPolicyStack.Outputs.HyphenLambdaManagedPolicy
+        ElasticsearchDomainEndpoint: !GetAtt ElasticStack.Outputs.ElasticsearchDomainEndpoint
+        DynamoDBArn: !GetAtt DynamoDB.Outputs.DynamoDBArn
+        ElasticsearchDomain: !GetAtt ElasticStack.Outputs.ElasticsearchDomain
+        FileManagerBucketARN: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucketARN
+        StackName: !Ref StackName
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  SegmentCountStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: SegmentCountStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        ElasticsearchDomainEndpoint: !GetAtt ElasticStack.Outputs.ElasticsearchDomainEndpoint
+        # PinpointExportJobBucket: !GetAtt PinpointExportJobBucketStack.Outputs.PinpointExportJobBucket
+        # PinpointExportJobBucket: !GetAtt FirehoseBucketStack.Outputs.FirehoseBackupBucket
+        # PinpointExportJobBucket: !GetAtt FileManagerBucketStack.Outputs.FileManagerBucket
+        PinpointExportJobBucket: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucket
+        PinpointExportJobsRoleArn: !GetAtt PinpointExportJobRoleStack.Outputs.PinpointExportJobsRoleArn
+        EndpointCountRoleArn: !GetAtt PinpointExportJobRoleStack.Outputs.EndpointCountRoleArn
+        # HyphenLambdaManagedPolicy: !GetAtt LambdaPolicyStack.Outputs.HyphenLambdaManagedPolicy
+        # ElasticsearchDomain: !GetAtt ElasticStack.Outputs.ElasticsearchDomain
+        # FileManagerBucketARN: !GetAtt FileManagerBucketStack.Outputs.FileManagerBucketARN
+        FileManagerBucketARN: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucketARN
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  DataMigrationStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: DataMigrationStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        HyphenLambdaManagedPolicy: !GetAtt LambdaPolicyStack.Outputs.HyphenLambdaManagedPolicy
+        ElasticsearchDomainEndpoint: !GetAtt ElasticStack.Outputs.ElasticsearchDomainEndpoint
+        ElasticsearchDomain: !GetAtt ElasticStack.Outputs.ElasticsearchDomain
+        # FileManagerBucketARN: !GetAtt FileManagerBucketStack.Outputs.FileManagerBucketARN
+        FileManagerBucketARN: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucketARN
+        CognitoUserPoolExtArn: !GetAtt ExternalAPIStack.Outputs.UserPoolIdExternalArn
+        HyphenCRMFirehoseARN: !GetAtt FirehoseStack.Outputs.HyphenCRMFirehoseARN
+        FirehosePinpointRoleARN: !GetAtt PinpointRoleStack.Outputs.FirehosePinpointRoleARN
+        ExternalUserPoolId: !GetAtt ExternalAPIStack.Outputs.UserPoolIdExternal
+        EnDCryptKeyARN: !Ref EnDCryptKeyARN
+        DynamoDBArn: !GetAtt DynamoDB.Outputs.DynamoDBArn
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  ReportsStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: ReportsStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        firehoseESIndex: !Ref firehoseESIndex
+        pinpointESData: !Ref pinpointESData
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        HyphenLambdaManagedPolicy: !GetAtt LambdaPolicyStack.Outputs.HyphenLambdaManagedPolicy
+        ElasticsearchDomainEndpoint: !GetAtt ElasticStack.Outputs.ElasticsearchDomainEndpoint
+        ElasticsearchDomain: !GetAtt ElasticStack.Outputs.ElasticsearchDomain
+        # FileManagerBucketARN: !GetAtt FileManagerBucketStack.Outputs.FileManagerBucketARN
+        FileManagerBucketARN: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucketARN
+        DynamoDBArn: !GetAtt DynamoDB.Outputs.DynamoDBArn
+        StackName: !Ref StackName
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  CleanupStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: CleanupStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        firehoseESIndex: !Ref firehoseESIndex
+        pinpointESData: !Ref pinpointESData
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        HyphenLambdaManagedPolicy: !GetAtt LambdaPolicyStack.Outputs.HyphenLambdaManagedPolicy
+        ElasticsearchDomainEndpoint: !GetAtt ElasticStack.Outputs.ElasticsearchDomainEndpoint
+        # FileManagerBucketARN: !GetAtt FileManagerBucketStack.Outputs.FileManagerBucketARN
+        FileManagerBucketARN: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucketARN
+        DynamoDBArn: !GetAtt DynamoDB.Outputs.DynamoDBArn
+        StackName: !Ref StackName
+        ElasticsearchDomain: !GetAtt ElasticStack.Outputs.ElasticsearchDomain
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  LambdaPolicyStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: lambda-policy-template.yaml
+      Parameters:
+        DynamoDBArn: !GetAtt DynamoDB.Outputs.DynamoDBArn
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  MessagingStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: MessagingStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        MessagingBucketName: !Ref MessagingBucketName
+        CustomersApiFunctionArn: !GetAtt FunctionStack.Outputs.CustomersApiFunctionArn
+        BuildersApiFunctionArn: !GetAtt FunctionStack.Outputs.BuildersApiFunctionArn
+        CommunitiesApiFunctionArn: !GetAtt FunctionStack.Outputs.CommunitiesApiFunctionArn
+        MetrosApiFunctionArn: !GetAtt FunctionStack.Outputs.MetrosApiFunctionArn
+        QstnApiFunctionArn: !GetAtt FunctionStack.Outputs.QstnApiFunctionArn
+        RealtorsApiFunctionArn: !GetAtt FunctionStack.Outputs.RealtorsApiFunctionArn
+        CobuyersApiFunctionArn: !GetAtt FunctionStack.Outputs.CobuyersApiFunctionArn
+        AgenciesApiFunctionArn: !GetAtt FunctionStack.Outputs.AgenciesApiFunctionArn
+        ActivitiesApiFunctionArn: !GetAtt FunctionStack.Outputs.ActivitiesApiFunctionArn
+        HyphenLambdaManagedPolicy: !GetAtt LambdaPolicyStack.Outputs.HyphenLambdaManagedPolicy
+        CRMAPIGatewayCustomDomain:
+          !If [
+            EnableCustomDomain,
+            !GetAtt FunctionStack.Outputs.CRMAPIGatewayCustomDomain,
+            "false",
+          ]
+        entitiesTableName: !Sub ${StackNamePrefix}entities-${StageName}-db
+        entitiesTableByEntityAndId: !Sub ${StackNamePrefix}byEntityAndIdIndex-${StageName}-db
+        entitiesTableByDataAndEntity: !Sub ${StackNamePrefix}byDataAndEntityIndex-${StageName}-db
+        IsEnableCustomDomain: !Ref IsEnableCustomDomain
+        APIDomainName: !FindInMap [APIDomainName, !Ref StageName, URL]
+        ProjectName: !Ref StackName
+        pinpointESData: !Ref pinpointESData
+        firehoseESIndex: !Ref firehoseESIndex
+        ElasticsearchDomainEndpoint: !GetAtt ElasticStack.Outputs.ElasticsearchDomainEndpoint
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  NPMLayer:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: lambda-layer-template.yaml
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  PinpointExportJobBucketStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: pinpoint-export-job-bucket-template.yaml
+      Parameters:
+        PinpointExportJobBucketName: !Sub ${StackNamePrefix}pinpointexportjob-${StageName}-s3
+        StageName: !Ref StageName
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  PinpointExportJobRoleStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: pinpoint-export-job-role-template.yaml
+      Parameters:
+        # PinpointExportJobBucketArn: !GetAtt PinpointExportJobBucketStack.Outputs.PinpointExportJobBucketARN
+        # PinpointExportJobBucketArn: !GetAtt FirehoseBucketStack.Outputs.FirehoseBackupBucketARN
+        # PinpointExportJobBucketArn: !GetAtt FileManagerBucketStack.Outputs.FileManagerBucketARN
+        PinpointExportJobBucketArn: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucketARN
+        DynamoDBArn: !GetAtt DynamoDB.Outputs.DynamoDBArn
+        FileManagerBucketARN: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucketARN
+        StageName: !Ref StageName
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  PinpointRoleStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: pinpoint-role-template.yaml
+      Parameters:
+        HyphenCRMFirehoseARN: !GetAtt FirehoseStack.Outputs.HyphenCRMFirehoseARN
+        StageName: !Ref StageName
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  ScaleRoleStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: scale-role-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  LeadTransferStack:
+    Condition: EnableSFTPServer
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: LeadTransferStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        BucketARN: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucketARN
+        IsEnableCustomDomain: !Ref IsEnableCustomDomain
+        SFTPCustomDomain: !FindInMap [SFTPCustomDomain, !Ref StageName, URL]
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        DynamoDBArn: !GetAtt DynamoDB.Outputs.DynamoDBArn
+        FileManagerBucketARN: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucketARN
+        HyphenLambdaManagedPolicy: !GetAtt LambdaPolicyStack.Outputs.HyphenLambdaManagedPolicy
+        ElasticsearchDomain: !GetAtt ElasticStack.Outputs.ElasticsearchDomain
+        ElasticsearchDomainEndpoint: !GetAtt ElasticStack.Outputs.ElasticsearchDomainEndpoint
+        HyphenCRMTransferServerVPC: !Ref VpcId
+        HyphenCRMTransferServerSubnetIds: !Join [",", !Ref SubnetIds]
+        HyphenCRMTransferServerElasticIPAllocationIds:
+          !Join [",", !Ref ElasticIPAllocationIds]
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  SocketServiceStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: SocketServiceStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        ElasticsearchDomainEndpoint: !GetAtt ElasticStack.Outputs.ElasticsearchDomainEndpoint
+        CognitoUserPoolId: !Ref CognitoUserPool
+        CognitoUserPoolClientId: !Ref CognitoUserPoolClient
+        DynamoDBArn: !GetAtt DynamoDB.Outputs.DynamoDBArn
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  SocketIdUpdateStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: SocketIdUpdateStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        DynamoDBArn: !GetAtt DynamoDB.Outputs.DynamoDBArn
+        ElasticsearchDomainEndpoint: !GetAtt ElasticStack.Outputs.ElasticsearchDomainEndpoint
+        # ElasticsearchDomain: !GetAtt ElasticStack.Outputs.ElasticsearchDomain
+        # HyphenLambdaManagedPolicy: !GetAtt LambdaPolicyStack.Outputs.HyphenLambdaManagedPolicy
+        # ActivitiesApiFunctionArn: !GetAtt FunctionStack.Outputs.ActivitiesApiFunctionArn
+        BuildersApiFunctionArn: !GetAtt FunctionStack.Outputs.BuildersApiFunctionArn
+        AdminApiFunctionArn: !GetAtt FunctionStack.Outputs.AdminApiFunctionArn
+        UsersApiFunctionArn: !GetAtt FunctionStack.Outputs.UsersApiFunctionArn
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  PinpointAnalyticsStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: PinpointAnalyticsStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        DynamoDBArn: !GetAtt DynamoDB.Outputs.DynamoDBArn
+        ElasticsearchDomain: !GetAtt ElasticStack.Outputs.ElasticsearchDomain
+        ElasticsearchDomainEndpoint: !GetAtt ElasticStack.Outputs.ElasticsearchDomainEndpoint
+        HyphenLambdaManagedPolicy: !GetAtt LambdaPolicyStack.Outputs.HyphenLambdaManagedPolicy
+        firehoseESIndex: !Ref firehoseESIndex
+        pinpointESData: !Ref pinpointESData
+        BuildersApiFunctionArn: !GetAtt FunctionStack.Outputs.BuildersApiFunctionArn
+        CampaignApiFunctionArn: !GetAtt FunctionStack.Outputs.CampaignApiFunctionArn
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+  
+  DeleteProfileDataStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: DeleteProfileDataStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        ElasticsearchDomainEndpoint: !GetAtt ElasticStack.Outputs.ElasticsearchDomainEndpoint
+        FileManagerBucketARN: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucketARN
+        HyphenLambdaManagedPolicy: !GetAtt LambdaPolicyStack.Outputs.HyphenLambdaManagedPolicy
+        ElasticsearchDomain: !GetAtt ElasticStack.Outputs.ElasticsearchDomain
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  BuilderDeleteStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: BuilderDeleteStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        ElasticsearchDomainEndpoint: !GetAtt ElasticStack.Outputs.ElasticsearchDomainEndpoint
+        FileManagerBucketARN: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucketARN
+        HyphenLambdaManagedPolicy: !GetAtt LambdaPolicyStack.Outputs.HyphenLambdaManagedPolicy
+        ElasticsearchDomain: !GetAtt ElasticStack.Outputs.ElasticsearchDomain
+        CognitoUserPoolARN: !GetAtt CognitoUserPool.Arn
+        CognitoUserPool: !Ref CognitoUserPool
+        ExternalUserPoolId: !GetAtt ExternalAPIStack.Outputs.UserPoolIdExternal
+        CognitoUserPoolClient: !Ref CognitoUserPoolClient
+        CognitoUserPoolExtArn: !GetAtt ExternalAPIStack.Outputs.UserPoolIdExternalArn
+        DynamoDBArn: !GetAtt DynamoDB.Outputs.DynamoDBArn
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+  SESFailureConfigStack:
+    Condition: EnableSESFailure
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: ses-sns-config-template.yaml
+      Parameters:
+        StackNamePrefix: !Ref StackNamePrefix
+        StageName: !Ref StageName
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+  
+  BulkDeleteAgenciesStack:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: DeleteAgenciesBulkStack-template.yaml
+      Parameters:
+        StageName: !Ref StageName
+        StackNamePrefix: !Ref StackNamePrefix
+        AwsSdkLayer: !GetAtt NPMLayer.Outputs.AwsSdkLayer
+        AgenciesApiFunctionArn: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${StackNamePrefix}AgenciesApiFunction-${StageName}
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: cloudformation
+
+Outputs:
+  UserPoolId:
+    Value:
+      Ref: CognitoUserPool
+  UserPoolClientId:
+    Value:
+      Ref: CognitoUserPoolClient
+  UserPoolIdExternal:
+    Value: !GetAtt ExternalAPIStack.Outputs.UserPoolIdExternal
+  UserPoolClientIdExternal:
+    Value: !GetAtt ExternalAPIStack.Outputs.UserPoolClientIdExternal
+  IdentityPoolId:
+    Value:
+      Ref: CognitoIdentityPool
+  HyphenCRMDistributionId:
+    Value: !GetAtt CloudFrontStack.Outputs.HyphenCRMDistributionId
+  HyphenCRMDistributionDomain:
+    Value: !GetAtt CloudFrontStack.Outputs.HyphenCRMDistributionDomain
+  FileManagerDistributionOutput:
+    Value: !GetAtt CloudFrontStack.Outputs.FileManagerDistributionOutput
+  FileManagerDistributionId:
+    Value: !GetAtt CloudFrontStack.Outputs.FileManagerDistributionId
+  FrontEndBucketName:
+    Value: !GetAtt FrontEndBucketStack.Outputs.FrontEndBucket
+  ServiceEndpoint:
+    Value: !GetAtt FunctionStack.Outputs.ServiceEndpoint
+  ServiceEndpointExternal:
+    Value: !GetAtt FunctionStack.Outputs.ServiceEndpointExternal
+  HyphenCRMWebSocketsGatewayEndpoint:
+    Value: !GetAtt SocketServiceStack.Outputs.HyphenCRMWebSocketsGatewayEndpoint
+  HyphenCRMWebSocketsGatewayPOSTEndpoint:
+    Value: !GetAtt SocketServiceStack.Outputs.HyphenCRMWebSocketsGatewayPOSTEndpoint
+  APICustomDomain:
+    Value: !GetAtt FunctionStack.Outputs.APICustomDomain
+  AssetsCustomDomain:
+    Value: !FindInMap [AssetsDomainName, !Ref StageName, URL]
+  ExtAPIDomainName:
+    Value: !FindInMap [ExtAPIDomainName, !Ref StageName, URL]
+  DomainName:
+    Value: !FindInMap [DomainName, !Ref StageName, URL]
+  BuildersApiFunctionRoleArn:
+    Value: !GetAtt FunctionStack.Outputs.BuildersApiFunctionRoleArn
+  TokensApiFunctionRoleArn:
+    Value: !GetAtt FunctionStack.Outputs.TokensApiFunctionRoleArn
+  HydrationEndpointHF:
+    Value: !GetAtt MessagingStack.Outputs.HydrationEndpointHF
+  MessagingEndpointHF:
+    Value: !GetAtt MessagingStack.Outputs.MessagingEndpointHF
+  ActivitiesApiFunctionArn:
+    Value: !GetAtt FunctionStack.Outputs.ActivitiesApiFunctionArn
+  CampaignApiFunctionArn:
+    Value: !GetAtt FunctionStack.Outputs.CampaignApiFunctionArn
+  RealtorsApiFunctionArn:
+    Value: !GetAtt FunctionStack.Outputs.RealtorsApiFunctionArn
+  AgenciesApiFunctionArn:
+    Value: !GetAtt FunctionStack.Outputs.AgenciesApiFunctionArn
+  SearchApiFunctionArn:
+    Value: !GetAtt FunctionStack.Outputs.SearchApiFunctionArn
+  BuildersApiFunctionArn:
+    Value: !GetAtt FunctionStack.Outputs.BuildersApiFunctionArn
+  SocketIdUpdateFunctionArn:
+    Value: !GetAtt SocketIdUpdateStack.Outputs.SocketIdUpdateFunctionArn
+  PinpointAnalyticsLambdaArn:
+    Value: !GetAtt PinpointAnalyticsStack.Outputs.PinpointAnalyticsLambdaArn
+  CustomersApiFunctionArn:
+    Value: !GetAtt FunctionStack.Outputs.CustomersApiFunctionArn
+  CobuyersApiFunctionArn:
+    Value: !GetAtt FunctionStack.Outputs.CobuyersApiFunctionArn
+  CommunitiesApiFunctionArn:
+    Value: !GetAtt FunctionStack.Outputs.CommunitiesApiFunctionArn
+  MetrosApiFunctionArn:
+    Value: !GetAtt FunctionStack.Outputs.MetrosApiFunctionArn
+  HyphenCRMTransferServerEndpoint:
+    Value:
+      Fn::If:
+        - EnableSFTPServer
+        - !Sub ${LeadTransferStack.Outputs.HyphenCRMTransferServerId}.server.transfer.${AWS::Region}.amazonaws.com
+        - "novalue"

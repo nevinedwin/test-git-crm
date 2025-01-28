@@ -1,0 +1,811 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: "Email Activity Update Template"
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 900
+    MemorySize: 1024
+    Layers:
+      - !Ref AwsSdkLayer
+    Environment:
+      Variables:
+        entitiesTableName: !Sub ${StackNamePrefix}entities-${StageName}-db
+        entitiesTableByEntityAndId: !Sub ${StackNamePrefix}byEntityAndIdIndex-${StageName}-db
+        entitiesTableByDataAndEntity: !Sub ${StackNamePrefix}byDataAndEntityIndex-${StageName}-db
+        STACK_PREFIX: !Ref StackNamePrefix
+        ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+        ES_REGION: !Ref AWS::Region
+        FILE_MANAGER_BUCKET_NAME: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+        MACHINE_ARN: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${StackNamePrefix}EmailActivityUpdateStateMachine-${StageName}
+    Tags:
+      Environment: !Ref StageName
+      Application: !Ref ApplicationTag
+      Owner: !Ref OwnerTag
+      Purpose: !Ref PurposeTag
+      Service: lambda
+Parameters:
+  StageName:
+    Type: String
+  StackName:
+    Type: String
+  StackNamePrefix:
+    Type: String
+  AwsSdkLayer:
+    Type: String
+  HyphenLambdaManagedPolicy:
+    Type: String
+  ElasticsearchDomainEndpoint:
+    Type: String
+  # ElasticsearchDomain:
+  #   Type: String
+  FileManagerBucketARN:
+    Type: String
+  # BuildersApiFunctionArn:
+  #   Type: String
+  # ActivitiesApiFunctionArn:
+  #   Type: String
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+  NestedStackPrefix:
+    Type: String
+    Default: "emailActivityUpdate-" 
+
+Resources:
+  GetHomeBuildersLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: GetHomeBuildersLambdaRolePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - execute-api:Invoke
+                Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+              # - Effect: Allow
+              #   Action:
+              #     - es:ESHttpPost
+              #     - es:ESHttpPut
+              #   Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+              - Effect: Allow
+                Action:
+                  - states:StartExecution
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                Resource: "*"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  GetHomeBuildersLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: getbuilders.main
+      CodeUri: getbuilders
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}GetHomeBuildersLambda-${StageName}
+      Role: !GetAtt GetHomeBuildersLambdaRole.Arn
+      Environment:
+        Variables:
+          StackName: !Ref StackName
+
+  GetHomeBuildersLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GetHomeBuildersLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  GetActivitiesIteratorLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: GetActivitiesIteratorLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - states:StartExecution
+                Resource: "*"
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  GetActivitiesIteratorLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: activitiesiterator.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}GetActivitiesIteratorLambda-${StageName}
+      CodeUri: activitiesiterator
+      Role: !GetAtt GetActivitiesIteratorLambdaRole.Arn
+
+  GetActivitiesIteratorLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GetActivitiesIteratorLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  GetEmailActivitiesLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: GetEmailActivitiesLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - execute-api:Invoke
+                Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+              - Effect: Allow
+                Action:
+                  - states:StartExecution
+                Resource: "*"
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  GetEmailActivitiesLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: getemailactivities.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}GetEmailActivitiesLambda-${StageName}
+      CodeUri: getemailactivities
+      Role: !GetAtt GetEmailActivitiesLambdaRole.Arn
+      # Environment:
+      #   Variables:
+      #     ACTIVITIES_LAMBDA_ARN: !Ref ActivitiesApiFunctionArn
+
+  GetEmailActivitiesLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GetEmailActivitiesLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  UpdateEmailActivityLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: UpdateEmailActivityLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  UpdateEmailActivityLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: updateemailactivity.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}UpdateEmailActivityLambda-${StageName}
+      CodeUri: updateemailactivity
+      Role: !GetAtt UpdateEmailActivityLambdaRole.Arn
+
+  UpdateEmailActivityLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${UpdateEmailActivityLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  ActivityUpdateCompleteLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: ActivityUpdateCompleteLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ActivityUpdateCompleteLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: updateactivitycomplete.main
+      CodeUri: updateactivitycomplete
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ActivityUpdateCompleteLambda-${StageName}
+      Role: !GetAtt ActivityUpdateCompleteLambdaRole.Arn
+
+  ActivityUpdateCompleteLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ActivityUpdateCompleteLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  ExceptionLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: ExceptionLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+  ExceptionLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: exception.main
+      CodeUri: exception
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ExceptionLambda-${StageName}
+      Role: !GetAtt ExceptionLambdaRole.Arn
+
+  ExceptionLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ExceptionLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  EmailActivityUpdateStatesExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - states.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: EmailActivityUpdateStatesExecutionPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt GetHomeBuildersLambda.Arn
+                  - !GetAtt GetActivitiesIteratorLambda.Arn
+                  - !GetAtt GetEmailActivitiesLambda.Arn
+                  - !GetAtt UpdateEmailActivityLambda.Arn
+                  - !GetAtt ActivityUpdateCompleteLambda.Arn
+                  - !GetAtt ExceptionLambda.Arn
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !Sub ${GetHomeBuildersLambda.Arn}:*
+                  - !Sub ${GetActivitiesIteratorLambda.Arn}:*
+                  - !Sub ${GetEmailActivitiesLambda.Arn}:*
+                  - !Sub ${UpdateEmailActivityLambda.Arn}:*
+                  - !Sub ${ActivityUpdateCompleteLambda.Arn}:*
+                  - !Sub ${ExceptionLambda.Arn}:*
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogDelivery
+                  - logs:GetLogDelivery
+                  - logs:UpdateLogDelivery
+                  - logs:DeleteLogDelivery
+                  - logs:ListLogDeliveries
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeLogGroups
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                  - xray:GetSamplingRules
+                  - xray:GetSamplingTargets
+                Resource: "*"
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  # EmailActivityUpdateStateMachine:
+  #   Type: AWS::Serverless::StateMachine
+  #   Properties:
+  #     Type: "STANDARD"
+  #     Role: !GetAtt EmailActivityUpdateStatesExecutionRole.Arn
+  #     Name: !Sub ${StackNamePrefix}EmailActivityUpdateStateMachine-${StageName}
+  #     DefinitionUri: state-machine/emailActivityUpdate.asl.json
+  #     DefinitionSubstitutions:
+  #       builderLambdaARN: !GetAtt GetHomeBuildersLambda.Arn
+  #       getEmailActivitiesIteratorLambdaARN: !GetAtt GetActivitiesIteratorLambda.Arn
+  #       getEmailActivitiesLambdaARN: !GetAtt GetEmailActivitiesLambda.Arn
+  #       updateEmailActivityLambdaARN: !GetAtt UpdateEmailActivityLambda.Arn
+  #       activityUpdateCompleteLambdaARN: !GetAtt ActivityUpdateCompleteLambda.Arn
+  #       exceptionLambdaARN: !GetAtt ExceptionLambda.Arn
+  #     Logging:
+  #       Destinations:
+  #         - CloudWatchLogsLogGroup:
+  #             LogGroupArn: !GetAtt EmailActivityUpdateStateMachineLogGroup.Arn
+  #       IncludeExecutionData: true
+  #       Level: ALL
+  #     Tracing:
+  #       Enabled: true
+  #     Tags:
+  #       Key: "hyphen:devteam"
+  #       Value: "CRM"
+
+  EmailActivityUpdateStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub ${StackNamePrefix}EmailActivityUpdateStateMachine-${StageName}
+      DefinitionString: !Sub
+        - |-
+          {
+            "Comment": "State machine for calculating entity analytics",
+            "StartAt": "GetHomeBuilders",
+            "States": {
+              "GetHomeBuilders": {
+                "Type": "Task",
+                "Resource": "${builderLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "Continue?"
+              },
+              "Continue?": {
+                "Comment": "If the builder is valid with an id",
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.isValidBuilder",
+                    "BooleanEquals": true,
+                    "Next": "SkipToGetEmailActivity?"
+                  }
+                ],
+                "Default": "ExceptionOccured"
+              },
+              "SkipToGetEmailActivity?": {
+                "Comment": "Continue straight to GetEmailActivities Lambda.",
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.skipToGetEmailActivity",
+                    "BooleanEquals": true,
+                    "Next": "GetEmailActivities"
+                  }
+                ],
+                "Default": "SkipToEmailActivityUpdate?"
+              },
+              "SkipToEmailActivityUpdate?": {
+                "Comment": "Continue straight to GetEmailActivitiesIterator.",
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.skipToEmailActivityUpdate",
+                    "BooleanEquals": true,
+                    "Next": "GetEmailActivitiesIterator"
+                  }
+                ],
+                "Default": "ConfigureGetEmailActivitiesCount"
+              },
+              "ConfigureGetEmailActivitiesCount": {
+                "Type": "Pass",
+                "Result": {
+                  "index": -1,
+                  "step": 100
+                },
+                "ResultPath": "$.activityiterator",
+                "Next": "GetEmailActivitiesIterator"
+              },
+              "GetEmailActivitiesIterator": {
+                "Type": "Task",
+                "Resource": "${getEmailActivitiesIteratorLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "ResultPath": "$.activityiterator",
+                "Next": "IsActivitiesCountReached?"
+              },
+              "IsActivitiesCountReached?": {
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.activityiterator.continue",
+                    "BooleanEquals": true,
+                    "Next": "GetEmailActivities"
+                  }
+                ],
+                "Default": "ActivityUpdateComplete"
+              },
+              "GetEmailActivities": {
+                "Type": "Task",
+                "Resource": "${getEmailActivitiesLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "ContinueToUpdateActivity?"
+              },
+              "ContinueToUpdateActivity?": {
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.continueToUpdateActivity",
+                    "BooleanEquals": true,
+                    "Next": "AreThereActivities?"
+                  }
+                ],
+                "Default": "ActivityUpdateComplete"
+              },
+              "AreThereActivities?": {
+                "Comment": "Whether any email activities were found to update",
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.isActivitiesFound",
+                    "BooleanEquals": true,
+                    "Next": "UpdateAllEmailActivities"
+                  }
+                ],
+                "Default": "EndProcess"
+              },
+              "UpdateAllEmailActivities": {
+                "Type": "Map",
+                "ItemsPath": "$.activityList",
+                "Parameters": {
+                  "list.$": "$$.Map.Item.Value"
+                },
+                "MaxConcurrency": 40,
+                "Catch": [
+                  {
+                    "ErrorEquals": ["States.ALL"],
+                    "Next": "ExceptionOccured"
+                  }
+                ],
+                "Iterator": {
+                  "StartAt": "UpdateEmailActivity",
+                  "States": {
+                    "UpdateEmailActivity": {
+                      "Type": "Task",
+                      "Resource": "${updateEmailActivityLambdaARN}",
+                      "TimeoutSeconds": 86400,
+                      "HeartbeatSeconds": 3600,
+                      "End": true
+                    }
+                  }
+                },
+                "ResultPath": null,
+                "Next": "GetEmailActivitiesIterator"
+              },
+              "ActivityUpdateComplete": {
+                "Type": "Task",
+                "Resource": "${activityUpdateCompleteLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "EndProcess"
+              },
+              "ExceptionOccured": {
+                "Type": "Task",
+                "Resource": "${exceptionLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "InvalidRequest"
+              },
+              "InvalidRequest": {
+                "Type": "Fail",
+                "Cause": "Invalid request/Exception occured",
+                "Error": "Request contains invalid or missing values/Exception"
+              },
+              "EndProcess": {
+                "Type": "Pass",
+                "End": true
+              }
+            }
+          }
+
+        - {
+            builderLambdaARN: !GetAtt GetHomeBuildersLambda.Arn,
+            getEmailActivitiesIteratorLambdaARN: !GetAtt GetActivitiesIteratorLambda.Arn,
+            getEmailActivitiesLambdaARN: !GetAtt GetEmailActivitiesLambda.Arn,
+            updateEmailActivityLambdaARN: !GetAtt UpdateEmailActivityLambda.Arn,
+            activityUpdateCompleteLambdaARN: !GetAtt ActivityUpdateCompleteLambda.Arn,
+            exceptionLambdaARN: !GetAtt ExceptionLambda.Arn,
+          }
+      RoleArn: !GetAtt EmailActivityUpdateStatesExecutionRole.Arn
+      LoggingConfiguration:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt EmailActivityUpdateStateMachineLogGroup.Arn
+        IncludeExecutionData: true
+        Level: ALL
+      TracingConfiguration:
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: stepfunctions
+
+  EmailActivityUpdateStateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/vendedlogs/states/${StackNamePrefix}EmailActivityUpdate-${StageName}
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  StateMachineStartExecutionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      # ManagedPolicyName: !Sub ${StackNamePrefix}state-machine-start-execution-policy-${StageName}
+      Roles:
+        - !Ref StateMachineStartExecutionRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - states:StartExecution
+            Resource:
+              - !Ref EmailActivityUpdateStateMachine
+          - Effect: Allow
+            Action:
+              - logs:CreateLogDelivery
+              - logs:GetLogDelivery
+              - logs:UpdateLogDelivery
+              - logs:DeleteLogDelivery
+              - logs:ListLogDeliveries
+              - logs:PutResourcePolicy
+              - logs:DescribeResourcePolicies
+              - logs:DescribeLogGroups
+            Resource: "*"
+
+  StateMachineStartExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      # RoleName: !Sub ${StackNamePrefix}state-machine-start-execution-role-${StageName}
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+Outputs:
+  EmailActivityUpdateStateMachineArn:
+    Value: !GetAtt EmailActivityUpdateStateMachine.Arn

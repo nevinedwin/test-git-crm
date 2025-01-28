@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<WebElementEntity>
+   <description></description>
+   <name>currentDate_EditSelect</name>
+   <tag></tag>
+   <elementGuidId>ad13bdc8-084d-472b-8795-cde240f1d234</elementGuidId>
+   <selectorCollection>
+      <entry>
+         <key>BASIC</key>
+         <value>
+//button[contains(@class,'daySelected')]/../following-sibling::div[1]/button</value>
+      </entry>
+   </selectorCollection>
+   <selectorMethod>BASIC</selectorMethod>
+   <useRalativeImagePath>false</useRalativeImagePath>
+   <webElementProperties>
+      <isSelected>true</isSelected>
+      <matchCondition>equals</matchCondition>
+      <name>xpath</name>
+      <type>Main</type>
+      <value>
+//button[contains(@class,'daySelected')]/../following-sibling::div[1]/button</value>
+   </webElementProperties>
+   <webElementProperties>
+      <isSelected>false</isSelected>
+      <matchCondition>equals</matchCondition>
+      <name>id</name>
+      <type>Main</type>
+      <value>//button[@class='MuiButtonBase-root MuiIconButton-root MuiPickersDay-day MuiPickersDay-current']</value>
+   </webElementProperties>
+</WebElementEntity>

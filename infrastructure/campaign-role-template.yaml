@@ -1,0 +1,172 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: "Hyphen CRM SAM Template"
+
+Parameters:
+  DynamoDBArn:
+    Type: String
+  StageName:
+    Type: String
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+  ElasticsearchDomain:
+    Type: String
+
+Resources:
+  CampaignRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: "CampaignRolePolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "dynamodb:Query"
+                  - "dynamodb:GetItem"
+                  - "dynamodb:PutItem"
+                  - "dynamodb:UpdateItem"
+                  - "dynamodb:DeleteItem"
+                  - "dynamodb:DescribeStream"
+                  - "dynamodb:GetRecords"
+                  - "dynamodb:GetShardIterator"
+                  - "dynamodb:ListStreams"
+                  - "dynamoDb:describeTable"
+                  - "dynamoDb:BatchGetItem"
+                Resource:
+                  - !Ref DynamoDBArn
+                  - !Sub "${DynamoDBArn}/index/*"
+              - Effect: "Allow"
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "arn:aws:logs:*:*:*"
+              - Effect: Allow
+                Action:
+                  - mobiletargeting:CreateSegment
+                  - mobiletargeting:TagResource
+                  - mobiletargeting:GetSegments
+                  - mobiletargeting:GetSegment
+                  - mobiletargeting:CreateCampaign
+                  - mobiletargeting:GetCampaigns
+                  - mobiletargeting:GetCampaign
+                  - mobiletargeting:CreateJourney
+                  - mobiletargeting:ListJourneys
+                  - mobiletargeting:SendMessages
+                  - mobiletargeting:CreateExportJob
+                  - mobiletargeting:TagResource
+                  - mobiletargeting:GetApps
+                  - mobiletargeting:PutEventStream
+                Resource: !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*"
+              - Effect: Allow
+                Action:
+                  - mobiletargeting:GetCampaignDateRangeKpi
+                Resource: !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/campaigns/*/kpis/daterange/*"
+              - Effect: Allow
+                Action:
+                  - mobiletargeting:GetJourneyDateRangeKpi
+                Resource: !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/journeys/*/kpis/daterange/*"
+              - Effect: Allow
+                Action:
+                  - mobiletargeting:GetUserEndpoints
+                Resource: !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/users/*"
+              - Effect: Allow
+                Action:
+                  - mobiletargeting:UpdateJourney
+                  - mobiletargeting:DeleteJourney
+                  - mobiletargeting:UpdateJourneyState
+                  - mobiletargeting:GetJourney
+                Resource: !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/journeys/*"
+              - Effect: Allow
+                Action:
+                  - mobiletargeting:GetJourneyExecutionMetrics
+                Resource: !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/journeys/*/execution-metrics"
+              - Effect: Allow
+                Action:
+                  - mobiletargeting:GetSegment
+                  - mobiletargeting:DeleteSegment
+                  - mobiletargeting:TagResource
+                  - mobiletargeting:UpdateSegment
+                  - mobiletargeting:GetSegmentExportJobs
+                  - mobiletargeting:GetExportJob
+                  - mobiletargeting:GetExportJobs
+                Resource: !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/segments/*"
+              - Effect: Allow
+                Action:
+                  - mobiletargeting:GetCampaignActivities
+                  - mobiletargeting:UpdateCampaign
+                  - mobiletargeting:DeleteCampaign
+                Resource: !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/campaigns/*"
+              - Effect: Allow
+                Action:
+                  - mobiletargeting:ListTemplates
+                Resource: !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:templates"
+              - Effect: Allow
+                Action:
+                  - mobiletargeting:CreateEmailTemplate
+                  - mobiletargeting:DeleteEmailTemplate
+                  - mobiletargeting:GetEmailTemplate
+                  - mobiletargeting:UpdateEmailTemplate
+                Resource:
+                  - !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:templates/*/email"
+                  - !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:templates/*/EMAIL"
+              - Effect: Allow
+                Action:
+                  - mobiletargeting:UpdateEndpoint
+                Resource: !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/endpoints/*"
+              - Effect: Allow
+                Action:
+                  - mobiletargeting:GetUserEndpoints
+                Resource: !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/users/*"
+              - Effect: Allow
+                Action:
+                  - mobiletargeting:RemoveAttributes
+                Resource: !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/attributes/*"
+              - Effect: Allow
+                Action:
+                  - ses:VerifyEmailIdentity
+                  - ses:GetIdentityVerificationAttributes
+                  - ses:SendCustomVerificationEmail
+                  - ses:GetCustomVerificationEmailTemplate
+                  - ses:CreateCustomVerificationEmailTemplate
+                  - ses:UpdateCustomVerificationEmailTemplate
+                  - ses:SendTemplatedEmail
+                  - ses:SendBulkTemplatedEmail
+                  - ses:SendRawEmail
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - es:ESHttpPost
+                  - es:ESHttpPut
+                Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+Outputs:
+  CampaignRoleARN:
+    Description: "CampaignRoleARN"
+    Value: !GetAtt CampaignRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-CampaignRoleARN"

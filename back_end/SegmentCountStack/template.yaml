@@ -1,0 +1,649 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: "Segment Count Template"
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 900
+    Layers:
+      - !Ref AwsSdkLayer
+    Environment:
+      Variables:
+        entitiesTableName: !Sub ${StackNamePrefix}entities-${StageName}-db
+        entitiesTableByEntityAndId: !Sub ${StackNamePrefix}byEntityAndIdIndex-${StageName}-db
+        entitiesTableByDataAndEntity: !Sub ${StackNamePrefix}byDataAndEntityIndex-${StageName}-db
+        STACK_PREFIX: !Ref StackNamePrefix
+        ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+        ES_REGION: !Ref AWS::Region
+        FILE_MANAGER_BUCKET_NAME: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+        MACHINE_ARN: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${StackNamePrefix}SegmentCountStateMachine-${StageName}
+    Tags:
+      Environment: !Ref StageName
+      Application: !Ref ApplicationTag
+      Owner: !Ref OwnerTag
+      Purpose: !Ref PurposeTag
+      Service: lambda
+Parameters:
+  StageName:
+    Type: String
+  StackNamePrefix:
+    Type: String
+  AwsSdkLayer:
+    Type: String
+  ElasticsearchDomainEndpoint:
+    Type: String
+  PinpointExportJobsRoleArn:
+    Type: String
+  PinpointExportJobBucket:
+    Type: String
+  EndpointCountRoleArn:
+    Type: String
+  # HyphenLambdaManagedPolicy:
+  #   Type: String
+  # ElasticsearchDomain:
+  #   Type: String
+  FileManagerBucketARN:
+    Type: String
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+  NestedStackPrefix:
+    Type: String
+    Default: "segmentCount-" 
+
+Resources:
+  CampaignJourneyCountRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: CampaignJourneyCountRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}
+                  - !Sub ${FileManagerBucketARN}/*
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+              - Effect: Allow
+                Action:
+                  - mobiletargeting:GetCampaigns
+                  - mobiletargeting:ListJourneys
+                Resource: !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*"
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  CampaignJourneyCountLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: campaigncount.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}CampaignJourneyCountLambda-${StageName}
+      CodeUri: campaigncount
+      Role: !GetAtt CampaignJourneyCountRole.Arn
+
+  CampaignJourneyCountLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CampaignJourneyCountLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  LambdaS3SegmentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: LambdaS3SegmentRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}
+                  - !Sub ${FileManagerBucketARN}/*
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  IteratorLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: iterator.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}IteratorLambda-${StageName}
+      CodeUri: iterator
+      Role: !GetAtt LambdaS3SegmentRole.Arn
+
+  IteratorLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${IteratorLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  SegmentIdIteratorLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: segmentiditerator.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}SegmentIdIteratorLambda-${StageName}
+      CodeUri: segmentiditerator
+      Role: !GetAtt LambdaS3SegmentRole.Arn
+
+  SegmentIdIteratorLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${SegmentIdIteratorLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  ExceptionLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: exception.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ExceptionLambda-${StageName}
+      CodeUri: exception
+      Role: !GetAtt LambdaS3SegmentRole.Arn
+
+  ExceptionLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ExceptionLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  ImportSuccessLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: importsuccess.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ImportSuccessLambda-${StageName}
+      CodeUri: importsuccess
+      Role: !Ref EndpointCountRoleArn
+
+  ImportSuccessLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ImportSuccessLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  GetSegmentListLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: getsegmentlist.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}GetSegmentListLambda-${StageName}
+      CodeUri: getsegmentlist
+      Role: !Ref EndpointCountRoleArn
+
+  GetSegmentListLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GetSegmentListLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  EndpointCountFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: endpointcount.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}EndpointCountFunction-${StageName}
+      CodeUri: endpointcount
+      MemorySize: 2048
+      Role: !Ref EndpointCountRoleArn
+      Environment:
+        Variables:
+          REGION:
+            Ref: AWS::Region
+          ACCOUNT_ID:
+            Ref: AWS::AccountId
+          EXPORT_JOB_ROLE_ARN: !Ref PinpointExportJobsRoleArn
+          EXPORT_JOB_BUCKET_NAME: !Ref PinpointExportJobBucket
+      Events:
+        EndpointCountWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: "rate(25 minutes)"
+
+  EndpointCountFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${EndpointCountFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  SegmentCountStatesExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - states.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: SegmentCountStatesExecutionPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt EndpointCountFunction.Arn
+                  - !GetAtt GetSegmentListLambda.Arn
+                  - !GetAtt CampaignJourneyCountLambda.Arn
+                  - !GetAtt EndpointCountFunction.Arn
+                  - !GetAtt IteratorLambda.Arn
+                  - !GetAtt SegmentIdIteratorLambda.Arn
+                  - !GetAtt ExceptionLambda.Arn
+                  - !GetAtt ImportSuccessLambda.Arn
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !Sub ${EndpointCountFunction.Arn}:*
+                  - !Sub ${GetSegmentListLambda.Arn}:*
+                  - !Sub ${CampaignJourneyCountLambda.Arn}:*
+                  - !Sub ${EndpointCountFunction.Arn}:*
+                  - !Sub ${IteratorLambda.Arn}:*
+                  - !Sub ${SegmentIdIteratorLambda.Arn}:*
+                  - !Sub ${ExceptionLambda.Arn}:*
+                  - !Sub ${ImportSuccessLambda.Arn}:*
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogDelivery
+                  - logs:GetLogDelivery
+                  - logs:UpdateLogDelivery
+                  - logs:DeleteLogDelivery
+                  - logs:ListLogDeliveries
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeLogGroups
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                  - xray:GetSamplingRules
+                  - xray:GetSamplingTargets
+                Resource: "*"
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  SegmentCountStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub ${StackNamePrefix}SegmentCountStateMachine-${StageName}
+      DefinitionString: !Sub
+        - |-
+          {
+            "Comment": "State machine for getting the count of endpoints, campaigns, and journeys of all the segments across all the builders",
+            "StartAt": "GetSegmentList",
+            "States": {
+              "GetSegmentList": {
+                "Type": "Task",
+                "Resource": "${segmentListLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "Continue?"
+              },
+              "Continue?": {
+                "Comment": "Whether to continue with the counting or not?",
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.doCount",
+                    "BooleanEquals": true,
+                    "Next": "ConfigureCount"
+                  }
+                ],
+                "Default": "EndProcess"
+              },
+              "ConfigureCount": {
+                "Type": "Pass",
+                "Result": {
+                    "index": -1,
+                    "step": 1
+                },
+                "ResultPath": "$.iterator",
+                "Next": "Iterator"
+              },
+              "Iterator": {
+                "Type": "Task",
+                "Resource": "${iteratorLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "ResultPath": "$.iterator",
+                "Next": "IsCountReached"
+              },
+              "IsCountReached": {
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.iterator.continue",
+                    "BooleanEquals": true,
+                    "Next": "ConfigureSegmentIdCount"
+                  }
+                ],
+                "Default": "ImportSuccess"
+              },
+              "ConfigureSegmentIdCount": {
+                "Type": "Pass",
+                "Result": {
+                    "segmentIdIndex": -1,
+                    "segmentIdStep": 1
+                },
+                "ResultPath": "$.segmentIdIterator",
+                "Next": "SegmentIdIterator"
+              },
+              "SegmentIdIterator": {
+                "Type": "Task",
+                "Resource": "${segmentIdIteratorLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "ResultPath": "$.segmentIdIterator",
+                "Next": "IsSegmentIdCountReached"
+              },
+              "IsSegmentIdCountReached": {
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.segmentIdIterator.segmentIdContinue",
+                    "BooleanEquals": true,
+                    "Next": "GetSegmentCount"
+                  }
+                ],
+                "Default": "Iterator"
+              },
+              "GetSegmentCount": {
+                "Type": "Task",
+                "Resource": "${endpointCountLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Catch": [
+                  {
+                    "ErrorEquals": [ "States.ALL" ],
+                    "Next": "ExceptionOccured"
+                  }
+                ],
+                "Next": "GetSegmentCampaignJourneyCount"
+              },
+              "GetSegmentCampaignJourneyCount": {
+                "Type": "Task",
+                "Resource": "${campaignJourneyCountLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Catch": [
+                  {
+                    "ErrorEquals": [ "States.ALL" ],
+                    "Next": "ExceptionOccured"
+                  }
+                ],
+                "Next": "SegmentIdIterator"
+              },              
+              "ImportSuccess": {
+                "Type": "Task",
+                "Resource": "${importSuccessLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "EndProcess"
+              },
+              "ExceptionOccured": {
+                "Type": "Task",
+                "Resource": "${exceptionLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "InvalidRequest"
+              },
+              "InvalidRequest": {
+                "Type": "Fail",
+                "Cause": "Exception occured",
+                "Error": "Exception occured when calculating segment counts."
+              },
+              "EndProcess": {
+                "Type": "Pass",
+                "End": true
+              }
+            }
+          }
+        - {
+            segmentListLambdaARN: !GetAtt GetSegmentListLambda.Arn,
+            endpointCountLambdaARN: !GetAtt EndpointCountFunction.Arn,
+            campaignJourneyCountLambdaARN: !GetAtt CampaignJourneyCountLambda.Arn,
+            iteratorLambdaARN: !GetAtt IteratorLambda.Arn,
+            segmentIdIteratorLambdaARN: !GetAtt SegmentIdIteratorLambda.Arn,
+            exceptionLambdaARN: !GetAtt ExceptionLambda.Arn,
+            importSuccessLambdaARN: !GetAtt ImportSuccessLambda.Arn,
+          }
+      RoleArn: !GetAtt SegmentCountStatesExecutionRole.Arn
+      LoggingConfiguration:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt SegmentCountStateMachineLogGroup.Arn
+        IncludeExecutionData: true
+        Level: ALL
+      TracingConfiguration:
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: stepfunctions
+
+  SegmentCountStateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/vendedlogs/states/${StackNamePrefix}SegmentCount-${StageName}
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  # SegmentCountStateMachineRule:
+  #   Type: AWS::Events::Rule
+  #   Properties:
+  #     Description: SegmentCountStateMachineRule
+  #     ScheduleExpression: rate(125 minutes)
+  #     State: ENABLED
+  #     Targets:
+  #       - Arn: !GetAtt SegmentCountStateMachine.Arn
+  #         Id: SegmentCountStateMachineTarget
+  #         RoleArn: !GetAtt StateMachineStartExecutionRole.Arn
+
+  StateMachineStartExecutionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      # ManagedPolicyName: !Sub ${StackNamePrefix}state-machine-start-execution-policy-${StageName}
+      Roles:
+        - !Ref StateMachineStartExecutionRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - states:StartExecution
+            Resource:
+              - !Ref SegmentCountStateMachine
+          - Effect: Allow
+            Action:
+              - logs:CreateLogDelivery
+              - logs:GetLogDelivery
+              - logs:UpdateLogDelivery
+              - logs:DeleteLogDelivery
+              - logs:ListLogDeliveries
+              - logs:PutResourcePolicy
+              - logs:DescribeResourcePolicies
+              - logs:DescribeLogGroups
+            Resource: "*"
+
+  StateMachineStartExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      # RoleName: !Sub ${StackNamePrefix}state-machine-start-execution-role-${StageName}
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+Outputs:
+  SegmentCountStateMachineArn:
+    Value: !GetAtt SegmentCountStateMachine.Arn

@@ -1,0 +1,22 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: "Hyphen CRM SAM Template"
+
+Resources:
+  AwsSdkLayer:
+    Type: "AWS::Serverless::LayerVersion"
+    Properties:
+      LayerName: AWS-SDK-Layer
+      Description: Latest AWS SDK for Lambda
+      ContentUri: ../FunctionStack/NPMLayer/nodejs.zip
+      CompatibleRuntimes:
+        - nodejs20.x
+      LicenseInfo: "Available under the MIT-0 license."
+      RetentionPolicy: Delete
+
+Outputs:
+  AwsSdkLayer:
+    Description: "AwsSdkLayer"
+    Value: !Ref AwsSdkLayer
+    Export:
+      Name: !Sub "${AWS::StackName}-AwsSdkLayer"

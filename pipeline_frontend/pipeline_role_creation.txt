@@ -1,0 +1,16 @@
+    aws iam create-role --role-name cf-deploy-aws-crm-frontend \
+    --path /hyphen/deployment/codepipeline/aws-crm-frontend/ \
+    --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'\
+    --profile hyphen --region us-west-2
+    
+    aws iam attach-role-policy --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole --role-name cf-deploy-aws-crm-frontend --profile hyphen --region us-west-2
+
+    aws iam attach-role-policy --policy-arn arn:aws:iam::aws:policy/AWSCodePipelineCustomActionAccess --role-name cf-deploy-aws-crm-frontend --profile hyphen --region us-west-2
+
+    aws iam put-role-policy --role-name cf-deploy-aws-crm-frontend --policy-name FrontEndDeployRolePolicy --policy-document file://policy.json --profile hyphen --region us-west-2
+
+    aws iam get-role-policy --role-name cf-deploy-aws-crm-frontend --policy-name FrontEndDeployRolePolicy --profile hyphen --region us-west-2
+
+    sam build -t .\pipeline.yaml
+    sam package --output-template-file packaged.yaml --s3-bucket hyphen-dev-us-west-2-codepipeline --template-file ./pipeline.yaml --region us-west-2 --profile hyphen
+    aws cloudformation deploy --template-file ./packaged.yaml --stack-name crm-debug-frontend-pipeline --parameter-overrides ProjectName=crm-debug-frontend BackendProjectName=crm-debug --capabilities CAPABILITY_IAM --profile hyphen --region us-west-2

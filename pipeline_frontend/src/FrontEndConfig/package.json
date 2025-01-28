@@ -1,0 +1,14 @@
+{
+  "name": "frontend_config",
+  "version": "1.0.0",
+  "description": "Upload front end config JSON to S3",
+  "main": "app.js",
+  "repository": "",
+  "author": "SAM CLI",
+  "license": "MIT",
+  "dependencies": {},
+  "scripts": {},
+  "devDependencies": {
+    "aws-sdk": "^2.685.0"
+  }
+}

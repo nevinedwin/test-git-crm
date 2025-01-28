@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<WebElementEntity>
+   <description></description>
+   <name>link_realtorConfirm</name>
+   <tag></tag>
+   <elementGuidId>a060cdef-d69e-42d7-81b3-ae159ad0f6b6</elementGuidId>
+   <selectorCollection>
+      <entry>
+         <key>BASIC</key>
+         <value>//label[@for='realtor']/../following-sibling::div//span[text()='${realtor}']</value>
+      </entry>
+   </selectorCollection>
+   <selectorMethod>BASIC</selectorMethod>
+   <useRalativeImagePath>false</useRalativeImagePath>
+   <webElementProperties>
+      <isSelected>true</isSelected>
+      <matchCondition>equals</matchCondition>
+      <name>xpath</name>
+      <type>Main</type>
+      <value>//label[@for='realtor']/../following-sibling::div//span[text()='${realtor}']</value>
+   </webElementProperties>
+</WebElementEntity>

@@ -1,0 +1,752 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: "Hyphen CRM SAM Template"
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 60
+    Layers:
+      - !Ref AwsSdkLayer
+    Environment:
+      Variables:
+        entitiesTableName: !Ref entitiesTableName
+        entitiesTableByEntityAndId: !Ref entitiesTableByEntityAndId
+        entitiesTableByDataAndEntity: !Ref entitiesTableByDataAndEntity
+        pinpointESData: !Ref pinpointESData
+        firehoseESIndex: !Ref firehoseESIndex
+        ElasticsearchDomainEndpoint: !Ref ElasticsearchDomainEndpoint
+        ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+        ES_REGION: !Ref AWS::Region
+        FIREHOSE_ES_INDEX: !Ref firehoseESIndex
+        PINPOINT_ES_DATA: !Ref pinpointESData
+    Tags:
+      Environment: !Ref StageName
+      Application: !Ref ApplicationTag
+      Owner: !Ref OwnerTag
+      Purpose: !Ref PurposeTag
+      Service: lambda
+
+Parameters:
+  StageName:
+    Type: String
+  StackNamePrefix:
+    Type: String
+  AwsSdkLayer:
+    Type: String
+  MessagingBucketName:
+    Type: String
+  CustomersApiFunctionArn:
+    Type: String
+  BuildersApiFunctionArn:
+    Type: String
+  CommunitiesApiFunctionArn:
+    Type: String
+  MetrosApiFunctionArn:
+    Type: String
+  QstnApiFunctionArn:
+    Type: String
+  RealtorsApiFunctionArn:
+    Type: String
+  CobuyersApiFunctionArn:
+    Type: String
+  AgenciesApiFunctionArn:
+    Type: String
+  ActivitiesApiFunctionArn:
+    Type: String
+  HyphenLambdaManagedPolicy:
+    Type: String
+  MessagingBasePath:
+    Type: String
+    Default: messaging
+  CRMAPIGatewayCustomDomain:
+    Type: String
+  entitiesTableName:
+    Type: String
+  entitiesTableByEntityAndId:
+    Type: String
+  entitiesTableByDataAndEntity:
+    Type: String
+  IsEnableCustomDomain:
+    Type: String
+  APIDomainName:
+    Type: String
+  ProjectName:
+    Type: String
+  pinpointESData:
+    Type: String
+  firehoseESIndex:
+    Type: String
+  ElasticsearchDomainEndpoint:
+    Type: String
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+  NestedStackPrefix:
+    Type: String
+    Default: "messaging-" 
+Conditions:
+  EnableCustomDomain: !Equals [!Ref IsEnableCustomDomain, "true"]
+Resources:
+  # Messaging Resources
+  # CustomerSubFailQueue:
+  #   Type: AWS::SQS::Queue
+  #   Properties:
+  #     FifoQueue: true
+  #     QueueName: "CustomersSubscriptionDLQ.fifo"
+  CustomerSubscriptionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: customerSubscription
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}CustomerSubscriptionFunction-${StageName}
+      Handler: customerSubscription.main
+      # DeadLetterQueue:
+      #   Type: SQS
+      #   TargetArn: !GetAtt CustomerSubFailQueue.Arn
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - execute-api:Invoke
+              Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*
+              # Resource: arn:aws:ssm:us-west-2:748787612401:parameter/CRM/CustomerData/PublicConfig
+            # - Effect: Allow
+            #   Action:
+            #     - sqs:SendMessage
+            #   Resource: !GetAtt CustomerSubFailQueue.Arn
+            - Effect: "Allow"
+              Action:
+                - "s3:PutObject"
+                - "s3:PutObjectAcl"
+              Resource:
+                - !Sub arn:aws:s3:::${MessagingBucketName}
+                - !Sub arn:aws:s3:::${MessagingBucketName}/*
+            - Effect: "Allow"
+              Action:
+                - lambda:InvokeFunction
+              Resource:
+                - !Ref CustomersApiFunctionArn
+                - !Ref BuildersApiFunctionArn
+                - !Ref CommunitiesApiFunctionArn
+      Environment:
+        Variables:
+          S3_BUCKET_ARN: !Ref MessagingBucketName
+          CUSTOMER_LAMBDA_ARN: !Ref CustomersApiFunctionArn
+          BUILDER_LAMBDA_ARN: !Ref BuildersApiFunctionArn
+          COMMUNITY_LAMBDA_ARN: !Ref CommunitiesApiFunctionArn
+          STAGE: !Ref StageName
+          PROJECT_NAME: !Ref ProjectName
+      Events:
+        CustomerMessageSNS:
+          Type: SNS
+          Properties:
+            Topic: !Ref CRMCustomerSNSTopic
+            # SqsSubscription: true
+            # FilterPolicy:
+            #   subject:
+            #     - created
+            #     - updated
+  CustomerSubscriptionFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CustomerSubscriptionFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  CRMCustomerSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName:
+        !If [
+          EnableCustomDomain,
+          !Sub "com-brix-customerData-${StageName}",
+          !Sub "com-brix-customerData-${StackNamePrefix}${StageName}",
+        ]
+      # KmsMasterKeyId: String
+      # Subscription:
+      #   -
+      #     Endpoint: !Sub https://nfu6nehgzb.execute-api.us-west-2.amazonaws.com/${StageName}/api/public/customers/testsns
+      #     Protocol: https
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: sns
+      TopicName:
+        !If [
+          EnableCustomDomain,
+          !Sub "com-brix-customerData-${StageName}",
+          !Sub "com-brix-customerData-${StackNamePrefix}${StageName}",
+        ]
+  # Customer Hydration API Resources
+  # Customer Hydration API Lambda Function
+  CustomerHydrationApiFunction:
+    Type: "AWS::Serverless::Function"
+    Properties:
+      Handler: customersHydration.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}CustomerHydrationApiFunction-${StageName}
+      CodeUri: customersHydration
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*
+      Events:
+        CustomerGETWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: "rate(10 minutes)"
+
+  CustomerHydrationApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CustomerHydrationApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  CustomerGETLambdaPermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref CustomerHydrationApiFunction
+      Principal: apigateway.amazonaws.com
+
+  MessagingAPIGatewayCustomDomainMapping:
+    Condition: EnableCustomDomain
+    Type: AWS::ApiGateway::BasePathMapping
+    Properties:
+      BasePath: !Ref MessagingBasePath
+      DomainName: !Ref CRMAPIGatewayCustomDomain
+      RestApiId: !Ref HyphenCrmHydrationAPIGateway
+      Stage: !Ref HyphenCrmHydrationAPIGateway.Stage
+
+  HyphenCrmHydrationAPIGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      # AccessLogSetting: AccessLogSetting
+      Auth:
+        DefaultAuthorizer: AWS_IAM
+        InvokeRole: CALLER_CREDENTIALS # default, can specify other role or NONE
+        # InvokeRole: NONE
+      Cors:
+        AllowMethods: "'GET,POST'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-KeyContent-Type,X-Amz-Date,Authorization,X-Api-Key,Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'"
+        AllowOrigin: "'*'"
+      DefinitionBody:
+        openapi: "3.0.1"
+        info:
+          title: !Sub "${AWS::StackName}-customers-api"
+          version: "v1.0"
+        paths:
+          /crm/v1/customerData:
+            get:
+              summary: Get Customer Data
+              description: Returns Customer Data
+              parameters:
+                - name: customerId
+                  in: query
+                  required: true
+                  description: Customer UUID
+                  schema:
+                    type: string
+                    minimum: 32
+              responses:
+                200:
+                  description: "OK"
+                  content:
+                    application/json:
+                      schema:
+                        type: object
+                        properties:
+                          header:
+                            type: object
+                            properties:
+                              params:
+                                type: object
+                                properties:
+                                  customerId:
+                                    type: string
+                                  correlationId:
+                                    type: string
+                          result:
+                            type: object
+                            properties:
+                              FirstName:
+                                type: string
+                              LastName:
+                                type: string
+                              Email:
+                                type: string
+                              Phone:
+                                type: string
+                              Status:
+                                type: string
+                              CustomerId:
+                                type: string
+                              HomebuilderId:
+                                type: string
+                500:
+                  description: "Internal Server Error"
+                  content: {}
+              x-amazon-apigateway-integration:
+                uri:
+                  Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CustomerHydrationApiFunction.Arn}/invocations
+                responses:
+                  default:
+                    statusCode: "200"
+                  200:
+                    statusCode: "200"
+                  500:
+                    statusCode: "500"
+                passthroughBehavior: "when_no_match"
+                httpMethod: "POST"
+                contentHandling: "CONVERT_TO_TEXT"
+                type: "aws_proxy"
+            post:
+              summary: Publish to CRM SNS Topic
+              description: Publish Customer Details to CRM SNS Topic
+              parameters:
+                - name: customer
+                  in: body
+                  description: The customer to Publish to SNS
+                  schema:
+                    type: object
+                    required:
+                      - FirstName
+                      - LastName
+                      - Email
+                      - Phone
+                      - Status
+                      - Source
+                      - Grade
+                      - ContactMethod
+                      - HomebuilderId
+                    properties:
+                      FirstName:
+                        type: string
+                      LastName:
+                        type: string
+                      Email:
+                        type: string
+                      Phone:
+                        type: string
+                      Status:
+                        type: string
+                      Source:
+                        type: string
+                      Grade:
+                        type: string
+                      ContactMethod:
+                        type: string
+                      HomebuilderId:
+                        type: string
+              responses:
+                202:
+                  description: Accepted
+              x-amazon-apigateway-integration:
+                type: "aws"
+                httpMethod: "POST"
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:sns:action/Publish"
+                credentials: !GetAtt CRMTopicRole.Arn
+                requestParameters:
+                  integration.request.querystring.Message: "method.request.body"
+                  integration.request.querystring.TopicArn: !Sub "'${CRMCustomerSNSTopic}'"
+                responses:
+                  default:
+                    statusCode: 202
+          /crm/v2/publish:
+            post:
+              summary: Publish to CRM SNS Topic from Homefront
+              description: Publish Entity Details to CRM SNS Topic from Homefront
+              parameters:
+                - name: entity
+                  in: body
+                  description: The entity that gets published to SNS
+                  schema:
+                    type: object
+                    required:
+                      - FirstName
+                      - LastName
+                      - Email
+                      - Phone
+                      - Status
+                      - Source
+                      - Grade
+                      - ContactMethod
+                      - HomebuilderId
+                    properties:
+                      FirstName:
+                        type: string
+                      LastName:
+                        type: string
+                      Email:
+                        type: string
+                      Phone:
+                        type: string
+                      Status:
+                        type: string
+                      Source:
+                        type: string
+                      Grade:
+                        type: string
+                      ContactMethod:
+                        type: string
+                      HomebuilderId:
+                        type: string
+              responses:
+                202:
+                  description: Accepted
+              x-amazon-apigateway-integration:
+                type: "aws"
+                httpMethod: "POST"
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:sns:action/Publish"
+                credentials: !GetAtt CRMTopicRole.Arn
+                requestParameters:
+                  integration.request.querystring.Message: "method.request.body"
+                  integration.request.querystring.TopicArn: !Sub "'${CRMCustomerSNSTopic}'"
+                responses:
+                  default:
+                    statusCode: 202
+          /crm/v2/data:
+            post:
+              summary: Get entity data
+              description: Returns entity data using id and type
+              parameters:
+                - name: entityId
+                  in: query
+                  required: true
+                  description: Entity UUID
+                  schema:
+                    type: string
+                    minimum: 32
+                - name: type
+                  in: query
+                  required: true
+                  description: Entity type
+                  schema:
+                    type: string
+              responses:
+                200:
+                  description: "OK"
+                  content:
+                    application/json:
+                      schema:
+                        type: object
+                        properties:
+                          header:
+                            type: object
+                            properties:
+                              params:
+                                type: object
+                                properties:
+                                  entityId:
+                                    type: string
+                                  correlationId:
+                                    type: string
+                          result:
+                            type: object
+                            # properties:
+                            #   FirstName:
+                            #     type: string
+                            #   LastName:
+                            #     type: string
+                            #   Email:
+                            #     type: string
+                            #   Phone:
+                            #     type: string
+                            #   Status:
+                            #     type: string
+                            #   CustomerId:
+                            #     type: string
+                            #   HomebuilderId:
+                            #     type: string
+                500:
+                  description: "Internal Server Error"
+                  content: {}
+              x-amazon-apigateway-integration:
+                uri:
+                  Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${EntityHydrationApiFunction.Arn}/invocations
+                responses:
+                  default:
+                    statusCode: "200"
+                  200:
+                    statusCode: "200"
+                  500:
+                    statusCode: "500"
+                passthroughBehavior: "when_no_match"
+                httpMethod: "POST"
+                contentHandling: "CONVERT_TO_TEXT"
+                type: "aws_proxy"
+      # DefinitionUri:
+      #   Fn::Transform:
+      #     Name: AWS::Include
+      #     Parameters:
+      #       Location: api/customerAPISwagger.yaml
+      # Domain: DomainConfiguration
+      EndpointConfiguration: REGIONAL
+      # GatewayResponses: Map
+      # MethodSettings: MethodSettings
+      # MinimumCompressionSize: Integer
+      # Models: Map
+      # Name: !Sub ${StackNamePrefix}messaging-${StageName}-ag
+      # OpenApiVersion: String
+      StageName: !Ref StageName
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: apigateway
+      # TracingEnabled: Boolean
+      # Variables: Map
+  CRMTopicRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "apigateway.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Policies:
+        - PolicyName: !Sub "${AWS::StackName}-crm-topic-policy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action: "sns:Publish"
+                Effect: "Allow"
+                Resource: !Ref CRMCustomerSNSTopic
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  # Homefront-CRM SNS Topic
+  # CRMHomefrontSNSTopic:
+  #   Type: AWS::SNS::Topic
+  #   Properties:
+  #     DisplayName: !Sub com-homefront-data-${StageName}
+  #     Tags:
+  #       - Key: "hyphen:devteam"
+  #         Value: "CRM"
+  #     TopicName: !Sub com-homefront-data-${StageName}
+  # # IAM Role for publishing to CRMHomefrontSNSTopic
+  # CRMHomefrontTopicRole:
+  #   Type: AWS::IAM::Role
+  #   Properties:
+  #     AssumeRolePolicyDocument:
+  #       Version: 2012-10-17
+  #       Statement:
+  #         - Effect: "Allow"
+  #           Principal:
+  #             Service: apigateway.amazonaws.com
+  #           Action:
+  #             - sts:AssumeRole
+  #     Policies:
+  #       - PolicyName: !Sub "${AWS::StackName}-crm-homefront-topic-policy"
+  #         PolicyDocument:
+  #           Version: 2012-10-17
+  #           Statement:
+  #             - Action: sns:Publish
+  #               Effect: Allow
+  #               Resource: !Ref CRMHomefrontSNSTopic
+  #     ManagedPolicyArns:
+  #       - "arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
+  #     Tags:
+  #       - Key: "hyphen:devteam"
+  #         Value: "CRM"
+  # Entity Hydration API Lambda Function
+  EntityHydrationApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: entityHydration.main
+      CodeUri: entityHydration
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}EntityHydrationApiFunction-${StageName}
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*
+      Events:
+        CustomerGETWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: "rate(10 minutes)"
+
+  EntityHydrationApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${EntityHydrationApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  EntityGETLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref EntityHydrationApiFunction
+      Principal: apigateway.amazonaws.com
+
+  EntitySubscriptionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: entitySubscription
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}EntitySubscriptionFunction-${StageName}
+      Handler: entitySubscription.main
+      # DeadLetterQueue:
+      #   Type: SQS
+      #   TargetArn: !GetAtt CustomerSubFailQueue.Arn
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - execute-api:Invoke
+              Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*
+              # Resource: arn:aws:ssm:us-west-2:748787612401:parameter/CRM/CustomerData/PublicConfig
+            # - Effect: Allow
+            #   Action:
+            #     - sqs:SendMessage
+            #   Resource: !GetAtt CustomerSubFailQueue.Arn
+            - Effect: "Allow"
+              Action:
+                - "s3:PutObject"
+                - "s3:PutObjectAcl"
+              Resource:
+                - !Sub arn:aws:s3:::${MessagingBucketName}
+                - !Sub arn:aws:s3:::${MessagingBucketName}/*
+            - Effect: "Allow"
+              Action:
+                - lambda:InvokeFunction
+              Resource:
+                - !Ref CustomersApiFunctionArn
+                - !Ref BuildersApiFunctionArn
+                - !Ref CommunitiesApiFunctionArn
+      Environment:
+        Variables:
+          S3_BUCKET_ARN: !Ref MessagingBucketName
+          CUSTOMER_LAMBDA_ARN: !Ref CustomersApiFunctionArn
+          BUILDER_LAMBDA_ARN: !Ref BuildersApiFunctionArn
+          COMMUNITY_LAMBDA_ARN: !Ref CommunitiesApiFunctionArn
+          METROS_LAMBDA_ARN: !Ref MetrosApiFunctionArn
+          QUESTIONS_LAMBDA_ARN: !Ref QstnApiFunctionArn
+          REALTORS_LAMBDA_ARN: !Ref RealtorsApiFunctionArn
+          COBUYER_LAMBDA_ARN: !Ref CobuyersApiFunctionArn
+          AGENCIES_LAMBDA_ARN: !Ref AgenciesApiFunctionArn
+          ACTIVITIES_LAMBDA_ARN: !Ref ActivitiesApiFunctionArn
+          COMMUNITIES_LAMBDA_ARN: !Ref CommunitiesApiFunctionArn
+          STAGE: !Ref StageName
+          PROJECT_NAME: !Ref ProjectName
+      Events:
+        EntityMessageSNS:
+          Type: SNS
+          Properties:
+            Topic: !Ref CRMCustomerSNSTopic
+            # SqsSubscription: true
+            # FilterPolicy:
+            #   subject:
+            #     - created
+            #     - updated
+  EntitySubscriptionFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${EntitySubscriptionFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+Outputs:
+  HydrationServiceEndpoint:
+    Value: !Sub https://${HyphenCrmHydrationAPIGateway}.execute-api.${AWS::Region}.amazonaws.com/${StageName}
+  HydrationEndpointHF:
+    Value:
+      !If [
+        EnableCustomDomain,
+        !Sub "https://${APIDomainName}/${MessagingBasePath}/crm/v2/data",
+        !Sub "https://${HyphenCrmHydrationAPIGateway}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/crm/v2/data",
+      ]
+  MessagingEndpointHF:
+    Value:
+      !If [
+        EnableCustomDomain,
+        !Sub "https://${APIDomainName}/${MessagingBasePath}/crm/v2/publish",
+        !Sub "https://${HyphenCrmHydrationAPIGateway}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/crm/v2/publish",
+      ]

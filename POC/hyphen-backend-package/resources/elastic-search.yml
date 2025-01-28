@@ -1,0 +1,60 @@
+Resources:
+  ElasticsearchDomain: 
+    Type: 'AWS::Elasticsearch::Domain'
+    Properties:
+      DomainName: 'es-entities'
+      ElasticsearchClusterConfig: 
+        InstanceType: 't2.small.elasticsearch'
+        InstanceCount: 1
+      EBSOptions: 
+        EBSEnabled: true
+        Iops: 0
+        VolumeSize: 10
+        VolumeType: 'standard'
+      AccessPolicies: 
+        Version: '2012-10-17'
+        Statement: 
+          - Effect: 'Allow'
+            Principal: 
+              AWS: !GetAtt ElasticRole.Arn
+            Action: 'es:*'
+            Resource: '*'
+      AdvancedOptions: 
+        indices.fielddata.cache.size: ""
+        rest.action.multi.allow_explicit_index: 'true'
+      ElasticsearchVersion: 6.7
+      
+  ElasticRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: 'Allow'
+          Principal:
+            Service: 'lambda.amazonaws.com'
+          Action: 'sts:AssumeRole'
+      Path: '/'
+      Policies:
+        - PolicyName: 'ElasticRolePolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: 'Allow'
+              Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+              Resource: 'arn:aws:logs:*:*:*'
+            - Effect: 'Allow'
+              Action:
+              - dynamodb:DescribeStream
+              - dynamodb:GetRecords
+              - dynamodb:GetShardIterator
+              - dynamodb:ListStreams
+              Resource: !GetAtt EntitiesTable.StreamArn
+Outputs:
+  DomainArn:
+    Value: !GetAtt ElasticsearchDomain.DomainArn
+  DomainEndpoint:
+    Value: !GetAtt ElasticsearchDomain.DomainEndpoint

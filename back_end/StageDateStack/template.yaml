@@ -1,0 +1,704 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: "Stage Date Update Template"
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 900
+    MemorySize: 1024
+    Layers:
+      - !Ref AwsSdkLayer
+    Environment:
+      Variables:
+        entitiesTableName: !Sub ${StackNamePrefix}entities-${StageName}-db
+        entitiesTableByEntityAndId: !Sub ${StackNamePrefix}byEntityAndIdIndex-${StageName}-db
+        entitiesTableByDataAndEntity: !Sub ${StackNamePrefix}byDataAndEntityIndex-${StageName}-db
+        STACK_PREFIX: !Ref StackNamePrefix
+        ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+        ES_REGION: !Ref AWS::Region
+        MACHINE_ARN: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${StackNamePrefix}StageDateStateMachine-${StageName}
+    Tags:
+      Environment: !Ref StageName
+      Application: !Ref ApplicationTag
+      Owner: !Ref OwnerTag
+      Purpose: !Ref PurposeTag
+      Service: lambda
+Parameters:
+  StageName:
+    Type: String
+  StackNamePrefix:
+    Type: String
+  AwsSdkLayer:
+    Type: String
+  HyphenLambdaManagedPolicy:
+    Type: String
+  ElasticsearchDomainEndpoint:
+    Type: String
+  ElasticsearchDomain:
+    Type: String
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+  NestedStackPrefix:
+    Type: String
+    Default: "stageDate-" 
+
+Resources:
+  IteratorLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: IteratorLambdaRoleRolePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - execute-api:Invoke
+                Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+              - Effect: Allow
+                Action:
+                  - states:StartExecution
+                Resource: "*"
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  IteratorLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: iterator.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}IteratorLambda-${StageName}
+      CodeUri: iterator
+      Role: !GetAtt IteratorLambdaRole.Arn
+
+  IteratorLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${IteratorLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  ImportSuccessLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ImportSuccessLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: importsuccess.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ImportSuccessLambda-${StageName}
+      CodeUri: importsuccess
+      Role: !GetAtt ImportSuccessLambdaRole.Arn
+
+  ImportSuccessLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ImportSuccessLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  StageDateStatesExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - states.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: StageDateStatesExecutionPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt GetImportEnabledHomebuildersLambda.Arn
+                  - !GetAtt ProcessLeadsLambda.Arn
+                  - !GetAtt ImportCustomerLambda.Arn
+                  - !GetAtt IteratorLambda.Arn
+                  - !GetAtt ImportSuccessLambda.Arn
+                  - !GetAtt ExceptionLambda.Arn
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !Sub ${GetImportEnabledHomebuildersLambda.Arn}:*
+                  - !Sub ${ProcessLeadsLambda.Arn}:*
+                  - !Sub ${ImportCustomerLambda.Arn}:*
+                  - !Sub ${IteratorLambda.Arn}:*
+                  - !Sub ${ImportSuccessLambda.Arn}:*
+                  - !Sub ${ExceptionLambda.Arn}:*
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogDelivery
+                  - logs:GetLogDelivery
+                  - logs:UpdateLogDelivery
+                  - logs:DeleteLogDelivery
+                  - logs:ListLogDeliveries
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeLogGroups
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                  - xray:GetSamplingRules
+                  - xray:GetSamplingTargets
+                Resource: "*"
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ProcessLeadsLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ProcessLeadsLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - execute-api:Invoke
+                Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+              - Effect: Allow
+                Action:
+                  - es:ESHttpPost
+                  - es:ESHttpPut
+                Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ProcessLeadsLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: processleads.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ProcessLeadsLambda-${StageName}
+      CodeUri: processleads
+      Role: !GetAtt ProcessLeadsLambdaRole.Arn
+
+  ProcessLeadsLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ProcessLeadsLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  ImportCustomerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ImportCustomerLambdaRolePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - execute-api:Invoke
+                Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ImportCustomerLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: importcustomer.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ImportCustomerLambda-${StageName}
+      CodeUri: importcustomer
+      Role: !GetAtt ImportCustomerLambdaRole.Arn
+
+  ImportCustomerLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ImportCustomerLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  GetImportEnabledHomebuildersLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: GetImportEnabledHomebuildersLambdaRolePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - execute-api:Invoke
+                Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+              - Effect: Allow
+                Action:
+                  - states:StartExecution
+                Resource: "*"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  GetImportEnabledHomebuildersLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: getconfig.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}GetImportEnabledHomebuildersLambda-${StageName}
+      CodeUri: getconfig
+      Role: !GetAtt GetImportEnabledHomebuildersLambdaRole.Arn
+
+  GetImportEnabledHomebuildersLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GetImportEnabledHomebuildersLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  ExceptionLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+      # Path: /
+      # Policies:
+      #   - PolicyName: ExceptionLambdaRolePolicy
+      #     PolicyDocument:
+      #       Version: 2012-10-17
+      #       Statement:
+      #         - Effect: Allow
+      #           Action:
+      #             - s3:PutObject
+      #             - s3:GetObject
+      #           Resource:
+      #             - !Sub ${FileManagerBucketARN}/*
+  ExceptionLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: exception.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ExceptionLambda-${StageName}
+      CodeUri: exception
+      Role: !GetAtt ExceptionLambdaRole.Arn
+
+  ExceptionLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ExceptionLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  StageDateStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub ${StackNamePrefix}StageDateStateMachine-${StageName}
+      DefinitionString: !Sub
+        - |-
+          {
+            "Comment": "State machine for getting leads from an external API",
+            "StartAt": "GetImportEnabledHomebuilders",
+            "States": {
+              "GetImportEnabledHomebuilders": {
+                "Type": "Task",
+                "Resource": "${configLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "Continue?"
+              },
+              "Continue?": {
+                "Comment": "If the builder config is valid",
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.configExists",
+                    "BooleanEquals": true,
+                    "Next": "Iterator"
+                  }
+                ],
+                "Default": "EndProcess"
+              },
+              "Iterator": {
+                "Type": "Task",
+                "Resource": "${iteratorLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "ResultPath": "$.iterator",
+                "Next": "IsCountReached"
+              },
+              "IsCountReached": {
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.iterator.continue",
+                    "BooleanEquals": true,
+                    "Next": "ProcessLeads"
+                  }
+                ],
+                "Default": "ImportSuccess"
+              },                    
+              "ProcessLeads": {
+                "Type": "Task",
+                "Resource": "${processLeadsArn}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Catch": [
+                  {
+                    "ErrorEquals": [ "States.ALL" ],
+                    "Next": "ExceptionOccured"
+                  }
+                ],
+                "Next": "ValidList?"
+              },
+              "ValidList?": {
+                "Comment": "If the customer list contains valid fields",
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.doImport",
+                    "BooleanEquals": false,
+                    "Next": "ExceptionOccured"
+                  }
+                ],
+                "Default": "ImportAllCustomers"
+              },
+              "ImportAllCustomers": {
+                "Type": "Map",
+                "MaxConcurrency": 40,
+                "Catch": [
+                  {
+                    "ErrorEquals": [ "States.ALL" ],
+                    "Next": "ExceptionOccured"
+                  }
+                ],
+                "Iterator": {
+                  "StartAt": "ImportCustomer",
+                  "States": {
+                    "ImportCustomer": {
+                      "Type": "Task",
+                      "Resource": "${importCustomerArn}",
+                      "TimeoutSeconds": 86400,
+                      "HeartbeatSeconds": 3600,
+                      "End": true
+                    }
+                  }
+                },
+                "Next": "Iterator",
+                "ItemsPath": "$.customersList",
+                "ResultPath": null
+              },
+              "ImportSuccess": {
+                "Type": "Task",
+                "Resource": "${importSuccessLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "EndProcess"
+              },
+              "ExceptionOccured": {
+                "Type": "Task",
+                "Resource": "${exceptionLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "ErrorMessage"
+              },
+              "ErrorMessage": {
+                "Type": "Fail",
+                "Cause": "Exception occured",
+                "Error": "Some exception occured processing the updates"
+              },
+              "EndProcess": {
+                "Type": "Pass",
+                "End": true
+              }
+            }
+          }
+        - {
+            configLambdaARN: !GetAtt GetImportEnabledHomebuildersLambda.Arn,
+            processLeadsArn: !GetAtt ProcessLeadsLambda.Arn,
+            importCustomerArn: !GetAtt ImportCustomerLambda.Arn,
+            exceptionLambdaARN: !GetAtt ExceptionLambda.Arn,
+            iteratorLambdaARN: !GetAtt IteratorLambda.Arn,
+            importSuccessLambdaARN: !GetAtt ImportSuccessLambda.Arn,
+          }
+      RoleArn: !GetAtt StageDateStatesExecutionRole.Arn
+      LoggingConfiguration:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt StageDateStateMachineLogGroup.Arn
+        IncludeExecutionData: true
+        Level: ALL
+      TracingConfiguration:
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: stepfunctions
+
+  StageDateStateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/vendedlogs/states/${StackNamePrefix}StageDate-${StageName}
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  # StageDateStateMachineRule:
+  #   Type: AWS::Events::Rule
+  #   Properties:
+  #     Description: StageDateStateMachineRule
+  #     ScheduleExpression: rate(10 minutes)
+  #     State: ENABLED
+  #     Targets:
+  #       - Arn: !GetAtt StageDateStateMachine.Arn
+  #         Id: StageDateStateMachineTarget
+  #         RoleArn: !GetAtt StateMachineStartExecutionRole.Arn
+
+  StateMachineStartExecutionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      # ManagedPolicyName: !Sub ${StackNamePrefix}state-machine-start-execution-policy-${StageName}
+      Roles:
+        - !Ref StateMachineStartExecutionRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - states:StartExecution
+            Resource:
+              - !Ref StageDateStateMachine
+          - Effect: Allow
+            Action:
+              - logs:CreateLogDelivery
+              - logs:GetLogDelivery
+              - logs:UpdateLogDelivery
+              - logs:DeleteLogDelivery
+              - logs:ListLogDeliveries
+              - logs:PutResourcePolicy
+              - logs:DescribeResourcePolicies
+              - logs:DescribeLogGroups
+            Resource: "*"
+
+  StateMachineStartExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      # RoleName: !Sub ${StackNamePrefix}state-machine-start-execution-role-${StageName}
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+Outputs:
+  StageDateStateMachineArn:
+    Value: !GetAtt StageDateStateMachine.Arn

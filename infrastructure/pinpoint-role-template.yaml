@@ -1,0 +1,62 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: "Hyphen CRM SAM Template"
+
+Parameters:
+  HyphenCRMFirehoseARN:
+    Type: String
+  StageName:
+    Type: String
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+
+Resources:
+  FirehosePinpointRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "pinpoint.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Path: "/service-role/"
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  PinpointToFirehoseManagedPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Managed Policy for Pinpoint to Kinesis Data Delivery
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: "Allow"
+            Action:
+              - firehose:PutRecordBatch
+              - firehose:DescribeDeliveryStream
+            Resource:
+              - !Ref HyphenCRMFirehoseARN
+      Roles:
+        - !Ref FirehosePinpointRole
+
+Outputs:
+  FirehosePinpointRoleARN:
+    Description: "FirehosePinpointRoleARN"
+    Value: !GetAtt FirehosePinpointRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-FirehosePinpointRoleARN"

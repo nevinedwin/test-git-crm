@@ -1,0 +1,114 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: "Hyphen CRM SAM Template"
+
+Parameters:
+  entitiesTableName:
+    Type: String
+  entitiesTableByEntityAndId:
+    Type: String
+  entitiesTableByDataAndEntity:
+    Type: String
+  StageName:
+    Type: String
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+  # tableThroughput:
+  #   Type: Number
+  #   Default: 25
+  # DynamoDBKMSKey:
+  #   Type: String
+  # GlobalTableFunctionArn:
+  #   Type: String
+  # globalTableRegion:
+  #   Type: String
+  # createRegionForUpdate:
+  #   Type: String
+  # deleteRegionForUpdate:
+  #   Type: String
+
+Resources:
+  EntitiesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref entitiesTableName
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: entity
+          AttributeType: S
+        - AttributeName: data
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+        - AttributeName: entity
+          KeyType: RANGE
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      BillingMode: PAY_PER_REQUEST
+      # Set the capacity based on the stage
+      # ProvisionedThroughput:
+      #   ReadCapacityUnits: !Ref tableThroughput
+      #   WriteCapacityUnits: !Ref tableThroughput
+      # SSESpecification:
+      #   # KMSMasterKeyId: !Ref DynamoDBKMSKey
+      #   SSEEnabled: true
+      #   SSEType: KMS
+      StreamSpecification:
+        StreamViewType: "NEW_AND_OLD_IMAGES"
+      GlobalSecondaryIndexes:
+        - IndexName: !Ref entitiesTableByEntityAndId
+          KeySchema:
+            - AttributeName: entity
+              KeyType: HASH
+            - AttributeName: id
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          # ProvisionedThroughput:
+          #   ReadCapacityUnits: !Ref tableThroughput
+          #   WriteCapacityUnits: !Ref tableThroughput
+        - IndexName: !Ref entitiesTableByDataAndEntity
+          KeySchema:
+            - AttributeName: data
+              KeyType: HASH
+            - AttributeName: entity
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          # ProvisionedThroughput:
+          #   ReadCapacityUnits: !Ref tableThroughput
+          #   WriteCapacityUnits: !Ref tableThroughput
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: dynamodb
+
+Outputs:
+  DynamoDBTableName:
+    Description: "DynamoDBTableName"
+    Value: !Ref EntitiesTable
+    Export:
+      Name: !Sub "${AWS::StackName}-DynamoDBTableName"
+  DynamoDBArn:
+    Description: "DynamoDBArn"
+    Value: !GetAtt EntitiesTable.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-DynamoDBArn"
+  DynamoDBStreamARN:
+    Description: "DynamoDBStreamARN"
+    Value: !GetAtt EntitiesTable.StreamArn
+    Export:
+      Name: !Sub "${AWS::StackName}-DynamoDBStreamARN"

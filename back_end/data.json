@@ -1,0 +1,304 @@
+{
+    "crm-h-entities-dev-db": [
+        {
+            "PutRequest": {
+                "Item": {
+                    "id": {
+                        "S": "656e98e4-aebf-11e9-a2a3-2a2ae2dbcce4"
+                    },
+                    "hb_id": {
+                        "S": "e1f7fce0-a6e8-11e9-9619-7d7f43bb0081"
+                    },
+                    "rel_id": {
+                        "S": "6c2d013a-ffa4-11e9-8d71-362b9e155667"
+                    },
+                    "type": {
+                        "S": "community"
+                    },
+                    "name": {
+                        "S": "Pine Loft Grove"
+                    }
+                }
+            }
+        },
+        {
+            "PutRequest": {
+                "Item": {
+                    "id": {
+                        "S": "656e9b46-aebf-11e9-a2a3-2a2ae2dbcce4"
+                    },
+                    "hb_id": {
+                        "S": "e1f7fce0-a6e8-11e9-9619-7d7f43bb0081"
+                    },
+                    "rel_id": {
+                        "S": "6c2d0004-ffa4-11e9-8d71-362b9e155667"
+                    },
+                    "type": {
+                        "S": "community"
+                    },
+                    "name": {
+                        "S": "Park Ridge Estates"
+                    }
+                }
+            }
+        },
+        {
+            "PutRequest": {
+                "Item": {
+                    "id": {
+                        "S": "af045ab4-da9a-11e9-9d36-2a2ae2dbcce4"
+                    },
+                    "hb_id": {
+                        "S": "3179c00b-e82e-4a15-ac4c-8c80611aabe5"
+                    },
+                    "rel_id": {
+                        "S": "6c2cfeba-ffa4-11e9-8d71-362b9e155667"
+                    },
+                    "type": {
+                        "S": "community"
+                    },
+                    "name": {
+                        "S": "Palm Grove Apartments"
+                    }
+                }
+            }
+        },
+        {
+            "PutRequest": {
+                "Item": {
+                    "id": {
+                        "S": "af0457f8-da9a-11e9-9d36-2a2ae2dbcce4"
+                    },
+                    "hb_id": {
+                        "S": "3179c00b-e82e-4a15-ac4c-8c80611aabe5"
+                    },
+                    "rel_id": {
+                        "S": "6c2cfc44-ffa4-11e9-8d71-362b9e155667"
+                    },
+                    "type": {
+                        "S": "community"
+                    },
+                    "name": {
+                        "S": "Park Loft Estates"
+                    }
+                }
+            }
+        },
+        {
+            "PutRequest": {
+                "Item": {
+                    "id": {
+                        "S": "6c2cfc44-ffa4-11e9-8d71-362b9e155667"
+                    },
+                    "type": {
+                        "S": "metro"
+                    },
+                    "name": {
+                        "S": "Dallas"
+                    },
+                    "hb_id": {
+                        "S": "3179c00b-e82e-4a15-ac4c-8c80611aabe5"
+                    }
+                }
+            }
+        },
+        {
+            "PutRequest": {
+                "Item": {
+                    "id": {
+                        "S": "6c2cfeba-ffa4-11e9-8d71-362b9e155667"
+                    },
+                    "type": {
+                        "S": "metro"
+                    },
+                    "name": {
+                        "S": "Fort Worth"
+                    },
+                    "hb_id": {
+                        "S": "3179c00b-e82e-4a15-ac4c-8c80611aabe5"
+                    }
+                }
+            }
+        },
+        {
+            "PutRequest": {
+                "Item": {
+                    "id": {
+                        "S": "6c2d0004-ffa4-11e9-8d71-362b9e155667"
+                    },
+                    "type": {
+                        "S": "metro"
+                    },
+                    "name": {
+                        "S": "Houston"
+                    },
+                    "hb_id": {
+                        "S": "e1f7fce0-a6e8-11e9-9619-7d7f43bb0081"
+                    }
+                }
+            }
+        },
+        {
+            "PutRequest": {
+                "Item": {
+                    "id": {
+                        "S": "6c2d013a-ffa4-11e9-8d71-362b9e155667"
+                    },
+                    "type": {
+                        "S": "metro"
+                    },
+                    "name": {
+                        "S": "Austin"
+                    },
+                    "hb_id": {
+                        "S": "e1f7fce0-a6e8-11e9-9619-7d7f43bb0081"
+                    }
+                }
+            }
+        },
+        {
+            "PutRequest": {
+                "Item": {
+                    "id": {
+                        "S": "75fc4cee-011f-11ea-8d71-362b9e155667"
+                    },
+                    "type": {
+                        "S": "exp"
+                    },
+                    "name": {
+                        "S": "Families"
+                    },
+                    "hb_id": {
+                        "S": "e1f7fce0-a6e8-11e9-9619-7d7f43bb0081"
+                    }
+                }
+            }
+        },
+        {
+            "PutRequest": {
+                "Item": {
+                    "id": {
+                        "S": "75fc511c-011f-11ea-8d71-362b9e155667"
+                    },
+                    "type": {
+                        "S": "exp"
+                    },
+                    "name": {
+                        "S": "Multi-Gen"
+                    },
+                    "hb_id": {
+                        "S": "e1f7fce0-a6e8-11e9-9619-7d7f43bb0081"
+                    }
+                }
+            }
+        },
+        {
+            "PutRequest": {
+                "Item": {
+                    "id": {
+                        "S": "75fc527a-011f-11ea-8d71-362b9e155667"
+                    },
+                    "type": {
+                        "S": "exp"
+                    },
+                    "name": {
+                        "S": "Young Professionals"
+                    },
+                    "hb_id": {
+                        "S": "3179c00b-e82e-4a15-ac4c-8c80611aabe5"
+                    }
+                }
+            }
+        },
+        {
+            "PutRequest": {
+                "Item": {
+                    "id": {
+                        "S": "75fc53a6-011f-11ea-8d71-362b9e155667"
+                    },
+                    "type": {
+                        "S": "exp"
+                    },
+                    "name": {
+                        "S": "Boomers"
+                    },
+                    "hb_id": {
+                        "S": "3179c00b-e82e-4a15-ac4c-8c80611aabe5"
+                    }
+                }
+            }
+        },
+        {
+            "PutRequest": {
+                "Item": {
+                    "id": {
+                        "S": "75fc54d2-011f-11ea-8d71-362b9e155667"
+                    },
+                    "type": {
+                        "S": "spec"
+                    },
+                    "name": {
+                        "S": "East Valley"
+                    },
+                    "hb_id": {
+                        "S": "3179c00b-e82e-4a15-ac4c-8c80611aabe5"
+                    }
+                }
+            }
+        },
+        {
+            "PutRequest": {
+                "Item": {
+                    "id": {
+                        "S": "75fc55f4-011f-11ea-8d71-362b9e155667"
+                    },
+                    "type": {
+                        "S": "spec"
+                    },
+                    "name": {
+                        "S": "VIP"
+                    },
+                    "hb_id": {
+                        "S": "3179c00b-e82e-4a15-ac4c-8c80611aabe5"
+                    }
+                }
+            }
+        },
+        {
+            "PutRequest": {
+                "Item": {
+                    "id": {
+                        "S": "75fc590a-011f-11ea-8d71-362b9e155667"
+                    },
+                    "type": {
+                        "S": "spec"
+                    },
+                    "name": {
+                        "S": "NAHB Group Member"
+                    },
+                    "hb_id": {
+                        "S": "e1f7fce0-a6e8-11e9-9619-7d7f43bb0081"
+                    }
+                }
+            }
+        },
+        {
+            "PutRequest": {
+                "Item": {
+                    "id": {
+                        "S": "75fc604b-011f-11ea-8d71-362b9e155667"
+                    },
+                    "type": {
+                        "S": "spec"
+                    },
+                    "name": {
+                        "S": "West Valley"
+                    },
+                    "hb_id": {
+                        "S": "e1f7fce0-a6e8-11e9-9619-7d7f43bb0081"
+                    }
+                }
+            }
+        }
+    ]
+}

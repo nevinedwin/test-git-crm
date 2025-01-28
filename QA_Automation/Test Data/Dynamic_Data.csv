@@ -1,0 +1,16 @@
+URL,Username,Password,Fname,Lname,Email,Phone,Stage,Source,Grade,Contactmethod,Realtor,influence,interests,Desiredfeatures,Move,ddid,buttonAction,customer,emaillink,ddid2,editDetails,customerInfo,activityId,CreateMeeting,ddidMeeting,meetingValues,createNote,noteValues,createCall,callValues,createTask,ddidTask,taskValues,activityEditid,verifyEditActivity,searchType,searchKeyword
+http://dhrpptmjsfxsn.cloudfront.net,deepak.pc@inapp.com,Passw0rd!,AKhil,Ram,akhilbadborn@gmail.comm,965-656-2449,Buyer,Web,C,Phone,John - eXp Reality,Twitter,Park Ridge Estates,1 Study,2-3 Months,menu-stage,Save,Aquil Ram Chander,email@mail.mail,select-stage,editDetail_firstName,Aquil2,customerDetail_activity_appointment,customer_appointmentAdd_subject,,Test Meeting,customer_notesAdd_subject,TestNote,customer_callLogAdd_subject,TestCall,customer_taskAdd_subject,,TestTask,timeline_all,,all,
+,,,Chandler,Bing,chandler@xx2.xx,(854) 725-8966,Lead,Web,B,Email,Dave Zajdzinski - eXp Reality,LinkedIn,Pine Loft Grove,1 Garage,Over 3 Months,menu-psrc,Reset,Chandler Bing,chandler@xx2.xx,,editDetail_lastName,Ram Chander,customerDetail_activity_note,select-wit,menu-wit,Ajeesh S,,Note content Here,customer_callLogAdd_startDate,,select-assi,menu-assi,Ajeesh S,timeline_mail,Edit Note,agent,
+,,,,,akhillraam@gmailcom,,,,,,,Website,,6 Bedrooms,,menu-grade,Save and Add Another,vinu krishnan,vinu.krishnan@inapp.com,select-grade,editDetail_email,emailoops@mail.mail,customerDetail_activity_call,select-loc,menu-loc,Pine Loft Grove,,,,01:00 Hr,customer_taskAdd_startDate,,,timeline_note,"Edit Meeting
+
+",customer,jack
+,,,,,akhillraamgmail.com,,,,,,,,,,,menu-cntm,Cancel,,,select-cntm,editDetail_phone,(123) 456-7890,customerDetail_activity_task,customer_appointmentAdd_startDate,,,,,,Test call note,,,Test Task Note,timeline_calender,"Edit Call Details
+",property,
+,,,,,akhillraam@gmail.c,,,,,,,,,,,customerDetail_interest,,,,,,,,select-dur,menu-dur,01:45 Hr,,,,,,,Nitheesh S Kumar,timeline_call,"Edit Task
+",builder,
+,,,,,,,,,,,,,,,,customerDetail_influence,,,,,,,,,,Test Note,,,,,,,Edited Notes,timeline_task,,,
+,,,,,,,,,,,,,,,,realtorPopOverId,,,,,,,,,,Deepak P C,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,Park Ridge Estates,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,01:15 Hr,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,Note Edited,,,,,,,,,,,

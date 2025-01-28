@@ -1,0 +1,13 @@
+{
+    "name": "hyphen-crm-pipeline-frontend",
+    "version": "2.0.0",
+    "description": "This is a CloudFormation stack for Hyphen CRM CI/CD Pipeline for the Frontend",
+    "main": "index.js",
+    "scripts": {
+        "predeploy": "sam build",
+        "deploy": "sam package --output-template-file packaged.yaml --s3-bucket hyphen-dev-us-west-2-codepipeline --template-file ./pipeline.yaml --profile hyphen",
+        "postdeploy": "aws cloudformation deploy --template-file ./packaged.yaml --stack-name aws-crm-frontend-pipeline --parameter-overrides ProjectName=aws-crm-frontend BackendProjectName=aws-crm --capabilities CAPABILITY_IAM --profile hyphen --region us-west-2"
+    },
+    "author": "",
+    "license": "ISC"
+}

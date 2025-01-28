@@ -1,0 +1,127 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: "Hyphen CRM SAM Template"
+
+Parameters:
+  HyphenCRMFirehoseName:
+    Type: String
+  ElasticsearchDomainARN:
+    Type: String
+  firehoseESIndex:
+    Type: String
+  HyphenCRMFirehoseTransformARN:
+    Type: String
+  FirehoseRoleARN:
+    Type: String
+  FirehoseBackupBucketARN:
+    Type: String
+  pinpointESData:
+    Type: String
+  StackNamePrefix:
+    Type: String
+  StageName:
+    Type: String
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+
+Resources:
+  FirehoseElasticCloudwatchLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/kinesisfirehose/${StackNamePrefix}firehose-${StageName}-kf
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  FirehoseElasticCloudwatchLogStreamES:
+    Type: AWS::Logs::LogStream
+    Properties:
+      LogGroupName: !Ref FirehoseElasticCloudwatchLogGroup
+      LogStreamName: ElasticsearchDelivery
+
+  FirehoseElasticCloudwatchLogStreamS3:
+    Type: AWS::Logs::LogStream
+    Properties:
+      LogGroupName: !Ref FirehoseElasticCloudwatchLogGroup
+      LogStreamName: S3Delivery
+
+  HyphenCRMFirehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties:
+      DeliveryStreamName: !Ref HyphenCRMFirehoseName
+      DeliveryStreamType: DirectPut
+      ElasticsearchDestinationConfiguration:
+        BufferingHints:
+          IntervalInSeconds: 60
+          SizeInMBs: 1
+        CloudWatchLoggingOptions:
+          Enabled: true
+          LogGroupName: !Ref FirehoseElasticCloudwatchLogGroup
+          LogStreamName: !Ref FirehoseElasticCloudwatchLogStreamES
+        DomainARN: !Ref ElasticsearchDomainARN
+        IndexName: !Ref firehoseESIndex
+        IndexRotationPeriod: NoRotation
+        ProcessingConfiguration:
+          Enabled: true
+          Processors:
+            - Parameters:
+                - ParameterName: LambdaArn
+                  ParameterValue: !Sub ${HyphenCRMFirehoseTransformARN}:$LATEST
+                - ParameterName: BufferSizeInMBs
+                  ParameterValue: "1"
+                - ParameterName: BufferIntervalInSeconds
+                  ParameterValue: "60"
+                - ParameterName: NumberOfRetries
+                  ParameterValue: "3"
+                - ParameterName: RoleArn
+                  ParameterValue: !Ref FirehoseRoleARN
+              Type: Lambda
+        RetryOptions:
+          DurationInSeconds: 300
+        RoleARN: !Ref FirehoseRoleARN
+        S3BackupMode: FailedDocumentsOnly
+        S3Configuration:
+          BucketARN: !Ref FirehoseBackupBucketARN
+          Prefix: PinpointLogStream/
+          BufferingHints:
+            IntervalInSeconds: 60
+            SizeInMBs: 1
+          CloudWatchLoggingOptions:
+            Enabled: true
+            LogGroupName: !Ref FirehoseElasticCloudwatchLogGroup
+            LogStreamName: !Ref FirehoseElasticCloudwatchLogStreamS3
+          CompressionFormat: ZIP
+          # ErrorOutputPrefix: crmfirehoses3error-
+          # Prefix: crmfirehoses3-
+          RoleARN: !Ref FirehoseRoleARN
+        TypeName: !Ref pinpointESData
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: firehose
+
+Outputs:
+  HyphenCRMFirehoseARN:
+    Description: "HyphenCRMFirehoseARN"
+    Value: !GetAtt HyphenCRMFirehose.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-HyphenCRMFirehoseARN"

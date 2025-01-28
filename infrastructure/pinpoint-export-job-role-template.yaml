@@ -1,0 +1,165 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: "Hyphen CRM SAM Template"
+
+Parameters:
+  PinpointExportJobBucketArn:
+    Type: String
+  DynamoDBArn:
+    Type: String
+  FileManagerBucketARN:
+    Type: String
+  StageName:
+    Type: String
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+Resources:
+  PinpointExportJobsRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "pinpoint.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: "PinpointExportJobsRolePolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource:
+                  - !Sub ${PinpointExportJobBucketArn}
+                  - !Sub ${PinpointExportJobBucketArn}/*
+              - Effect: Allow
+                Action:
+                  - s3:ListAllMyBuckets
+                  - s3:GetBucketLocation
+                Resource:
+                  - arn:aws:s3:::*
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource:
+                  - !Sub ${PinpointExportJobBucketArn}
+                Condition:
+                  StringEquals:
+                    s3:delimiter:
+                      - "/"
+                    s3:prefix:
+                      - ""
+                      - "Exports/"
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource:
+                  - !Sub ${PinpointExportJobBucketArn}
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - ""
+                      - "Exports/"
+              - Effect: Allow
+                Action:
+                  - s3:*
+                Resource:
+                  - !Sub ${PinpointExportJobBucketArn}/Exports/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  EndpointCountRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: "EndpointCountRolePolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "dynamodb:Query"
+                  - "dynamodb:GetItem"
+                  - "dynamodb:PutItem"
+                Resource:
+                  - !Ref DynamoDBArn
+                  - !Sub "${DynamoDBArn}/index/*"
+              - Effect: "Allow"
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "arn:aws:logs:*:*:*"
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: !GetAtt PinpointExportJobsRole.Arn
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource:
+                  - !Sub ${PinpointExportJobBucketArn}
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${PinpointExportJobBucketArn}
+                  - !Sub ${PinpointExportJobBucketArn}/*
+              - Effect: Allow
+                Action:
+                  - mobiletargeting:GetExportJob
+                Resource: !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/jobs/export/*"
+              - Effect: Allow
+                Action:
+                  - mobiletargeting:GetSegments
+                  - mobiletargeting:CreateExportJob
+                Resource: !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*"
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+Outputs:
+  PinpointExportJobsRoleArn:
+    Description: "PinpointExportJobsRoleArn"
+    Value: !GetAtt PinpointExportJobsRole.Arn
+  EndpointCountRoleArn:
+    Description: "EndpointCountRole"
+    Value: !GetAtt EndpointCountRole.Arn

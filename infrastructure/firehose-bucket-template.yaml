@@ -1,0 +1,55 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: "Hyphen CRM SAM Template"
+
+Parameters:
+  firehoseBackupS3Name:
+    Type: String
+  StageName:
+    Type: String
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+
+Resources:
+  FirehoseBackupBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref firehoseBackupS3Name
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: s3
+      VersioningConfiguration:
+        Status: Enabled
+Outputs:
+  FirehoseBackupBucket:
+    Description: "FirehoseBackupBucket"
+    Value: !Ref FirehoseBackupBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-FirehoseBackupBucket"
+  FirehoseBackupBucketARN:
+    Description: "FirehoseBackupBucketARN"
+    Value: !GetAtt FirehoseBackupBucket.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-FirehoseBackupBucketARN"
+  FirehoseBackupBucketDomainName:
+    Description: "FirehoseBackupBucketDomainName"
+    Value: !GetAtt FirehoseBackupBucket.RegionalDomainName
+    Export:
+      Name: !Sub "${AWS::StackName}-FirehoseBackupBucketDomainName"

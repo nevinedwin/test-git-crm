@@ -1,0 +1,32 @@
+Lambda
+    convert csv to json and validate the CSV fields - save to s3
+
+Choice
+    if valid
+        Lambda
+            upload the status file indicating the start of the process
+            format the customers to CRM resource - upload the formatted customers json to s3
+        
+        Lambda
+            start the import
+                validate the customer JSON (builder id, empty request, existing email, etc.)
+                
+                Choice
+                    if valid
+                        Lambda
+                            iterator
+                                step - 100 - spawn new execution for the next set.
+                            Lambda
+                                create customer or update if already exists
+                            Lambda
+                                create stage change, inte change, and note activities
+                            Lambda
+                                publish messages to BRIX and Homefront
+                            Lambda
+                                update the success status in the status file in s3
+                    else
+                        Lambda
+                            end process - update the failed status in the status file in s3
+    else        
+        Lambda
+            end process - update the failed status in the status file in s3

@@ -1,0 +1,112 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: "Test SAM Template"
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 900
+    Environment:
+      Variables:
+        entitiesTableName: !Sub ${StackNamePrefix}entities-${StageName}-db
+        entitiesTableByEntityAndId: !Sub ${StackNamePrefix}byEntityAndIdIndex-${StageName}-db
+        entitiesTableByDataAndEntity: !Sub ${StackNamePrefix}byDataAndEntityIndex-${StageName}-db
+        ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+        ES_REGION: !Ref AWS::Region
+        FIREHOSE_ES_INDEX: !Ref firehoseESIndex
+        PINPOINT_ES_DATA: !Ref pinpointESData
+    Tags:
+      Environment: !Ref StageName
+      Application: !Ref ApplicationTag
+      Owner: !Ref OwnerTag
+      Purpose: !Ref PurposeTag
+      Service: lambda
+
+Parameters:
+  StageName:
+    Type: String
+  StackNamePrefix:
+    Type: String
+  AwsSdkLayer:
+    Type: String
+  HyphenLambdaManagedPolicy:
+    Type: String
+  StackName:
+    Type: String
+  ElasticsearchDomainEndpoint:
+    Type: String
+  firehoseESIndex:
+    Type: String
+  pinpointESData:
+    Type: String
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+  ElasticsearchDomain:
+    Type: String
+  NestedStackPrefix:
+    Type: String
+    Default: "firehoseLambda-" 
+Resources:
+  # Firehose Transform Lambda Function
+  HyphenCRMFirehoseTransform:
+    Type: AWS::Serverless::Function
+    Properties:
+      Environment:
+        Variables:
+          PROJECT_NAME: !Ref StackName
+      Handler: firehose.main
+      CodeUri: firehose
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}HyphenCRMFirehoseTransform-${StageName}
+      Layers:
+        - !Ref AwsSdkLayer
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - mobiletargeting:GetCampaign
+              Resource: !Sub arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*
+            - Effect: Allow
+              Action:
+                - mobiletargeting:GetJourney
+              Resource: !Sub arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/journeys/*
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+                - es:ESHttpPut
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+            - Effect: Allow
+              Action:
+                - cloudformation:DescribeStacks
+              Resource: "*"
+
+  HyphenCRMFirehoseTransformLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${HyphenCRMFirehoseTransform}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+Outputs:
+  HyphenCRMFirehoseTransformARN:
+    Description: "HyphenCRMFirehoseTransformARN"
+    Value: !GetAtt HyphenCRMFirehoseTransform.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-HyphenCRMFirehoseTransformARN"

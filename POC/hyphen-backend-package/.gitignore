@@ -1,0 +1,10 @@
+# package directories
+node_modules
+jspm_packages
+
+# Serverless directories
+.serverless
+.dynamodb
+.webpack
+docJs
+hyphen crm backend-dev-ap-south-1-policy.json

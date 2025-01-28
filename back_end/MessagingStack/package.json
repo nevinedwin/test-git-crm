@@ -1,0 +1,11 @@
+{
+  "name": "test-serverless",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "createbucket": "aws s3 mb s3://test-serv-es-backend-dev-s3 --region us-west-2 --profile hyphen",
+    "describestack": "aws cloudformation describe-stacks --stack-name test-serv-es-stack-dev-cf --region us-west-2 --profile hyphen",
+    "deploy": "sam package --template-file template.yaml --s3-bucket test-serv-es-backend-dev-s3 --output-template-file out.yaml  --profile hyphen",
+    "postdeploy": "sam deploy --template-file ./out.yaml --region us-west-2 --capabilities CAPABILITY_NAMED_IAM --stack-name test-serv-es-stack-dev-cf --s3-bucket test-serv-es-backend-dev-s3 --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND --profile hyphen"
+  }
+}

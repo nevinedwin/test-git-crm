@@ -1,0 +1,45 @@
+module.exports = {
+  env: {
+    es2021: true,
+    node: true,
+  },
+  extends: ["airbnb-base", "prettier"],
+  parserOptions: {
+    ecmaVersion: 12,
+    sourceType: "module",
+  },
+  plugins: ["prettier"],
+  rules: {
+    "prettier/prettier": "off",
+    "no-console": "off",
+    "no-restricted-syntax": "off",
+    "no-await-in-loop": "off",
+    "import/prefer-default-export": "off",
+    "no-param-reassign": "off",
+    "no-underscore-dangle": "off",
+    "import/no-unresolved": [
+      "error",
+      {
+        commonjs: true,
+        ignore: [
+          "uuid",
+          "aws-sdk",
+          "moment-timezone",
+          "nodemailer",
+          "ical-generator",
+          "csvtojson",
+          "dynamodb-stream-elasticsearch",
+          "jimp/es",
+          "busboy",
+          "aws4",
+          "chrome-aws-lambda",
+          "jsreport-core",
+          "jsreport-handlebars",
+          "jsreport-chrome-pdf",
+          "aws-sam-webpack-plugin",
+          "copy-webpack-plugin",
+        ],
+      },
+    ],
+  },
+};

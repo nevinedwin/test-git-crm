@@ -1,0 +1,129 @@
+@import '../scss/variables';
+
+.navbar{
+    box-shadow: 0px 3px 8px rgba(0,0,0,0.1);
+    padding-top: 0;
+    padding-bottom: 0;
+    .navbar-brand{
+        height: 64px;
+    }
+    .page-nav{
+        li{
+            display: flex;
+            align-items: center;
+            padding: 1.3rem 1rem;
+            border-bottom: 3px solid transparent;
+            font-weight: 700;
+            cursor: pointer;
+            @media only screen and (max-width: 767px) {
+                padding: 0.8rem 1rem;
+            }
+            @media only screen and (max-width: 350px) {
+                font-size: 0.87rem;
+            }
+            &.active, &:hover{
+                border-color: $primary-color;
+                color: $primary-color;
+            }
+        }
+        @media only screen and (max-width: 767px) {
+            border-bottom: 1px solid $gray-d;
+        }
+    }
+    .user-avatar{
+        width: 2.5rem;
+        height: 2.5rem;
+        img{
+            max-height: 100%;
+        }
+    }
+    .navbar-nav{
+        flex-direction: row;
+        .nav-item{
+            cursor: pointer;
+            .icon{
+                font-size: 1.2rem;
+            }
+            .nav-link{
+                color: $text-color;
+            }
+            
+        }
+        .dropdown-menu{
+            position: absolute;
+        }
+    }
+    .badge-indicator{
+        width: 15px;
+        height: 15px;
+        border-width: 3px ;
+        border-style: solid;
+        border-color: $red-color;
+        background-color: transparent;
+    }
+    .icon{
+        color: $text-color;
+    }
+    .dropdown-toggle::after{
+        display: none;
+    }
+    .indicator{
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        border: 3px solid $red-color;
+        display: inline-block;
+        position: absolute;
+        top: 14px;
+        right: 10px;
+    }
+    .navbar-toggler{
+        border: 0;
+    }
+}
+.img-fluid{
+    max-height: 100%;
+    max-width: none;
+}
+
+/*---Dropdown Animation----*/
+
+.animation{
+	-webkit-animation-duration: 0.3s;
+	animation-duration: 0.3s;
+	-webkit-animation-fill-mode: both;
+	animation-fill-mode: both;
+}
+
+@-webkit-keyframes slideUpIn {
+    0% {
+        
+        -webkit-transform: translateY(20px);
+    }
+    100% {
+        
+        -webkit-transform: translateY(0);
+    }
+    
+    0% {
+        -webkit-transform: translateY(20px);
+    }
+}
+
+@keyframes slideUpIn {
+   0% {
+       transform: translateY(20px);
+   }
+   100% {
+       transform: translateY(0);
+   }
+   0% {
+       transform: translateY(20px);
+   }
+}
+
+.slideUpIn {
+   -webkit-animation-name: slideUpIn;
+   animation-name: slideUpIn;
+}
+

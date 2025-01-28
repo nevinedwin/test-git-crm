@@ -1,0 +1,175 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Bulk delete agencies on a date range step function template
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 900
+    MemorySize: 1024
+    Layers:
+      - !Ref AwsSdkLayer
+    Tags:
+      Environment: !Ref StageName
+      Application: !Ref ApplicationTag
+      Owner: !Ref OwnerTag
+      Purpose: !Ref PurposeTag
+      Service: lambda
+
+Parameters:
+  StageName:
+    Type: String
+  StackNamePrefix:
+    Type: String
+  NestedStackPrefix:
+    Type: String
+    Default: delete-agencies-
+  AgenciesApiFunctionArn:
+    Type: String
+  AwsSdkLayer:
+    Type: String
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+
+Resources:
+
+  DeleteAgenciesInBulkLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: DeleteAgenciesInBulkLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${StackNamePrefix}function-AgenciesApiFunction-${StageName}
+
+  DeleteAgenciesInBulkLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}DeleteAgenciesInBulkLambda-${StageName}
+      Handler: removeDuplicates.main
+      CodeUri: removeDuplicates
+      Role: !GetAtt DeleteAgenciesInBulkLambdaRole.Arn
+      Environment:
+        Variables:
+          AGENCY_LAMBDA_ARN: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${StackNamePrefix}function-AgenciesApiFunction-${StageName}
+
+  DeleteAgenciesInBulkLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${DeleteAgenciesInBulkLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  DeleteAgenciesStateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - states.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: DeleteAgenciesStatesExecutionPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt DeleteAgenciesInBulkLambda.Arn
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !Sub ${DeleteAgenciesInBulkLambda.Arn}:*
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogDelivery
+                  - logs:GetLogDelivery
+                  - logs:UpdateLogDelivery
+                  - logs:DeleteLogDelivery
+                  - logs:ListLogDeliveries
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeLogGroups
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                  - xray:GetSamplingRules
+                  - xray:GetSamplingTargets
+                Resource: '*'
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  DeleteAgenciesInBulkStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: !Sub ${StackNamePrefix}DeleteAgenciesInBulkStateMachine-${StageName}
+      Definition:
+        StartAt: ProcessItems
+        States:
+          ProcessItems:
+            Type: Map
+            ItemsPath: $.items
+            ItemSelector:
+              hb_id.$: "$.hb_id"
+              agencyInfo.$: "$$.Map.Item.Value"
+            MaxConcurrency: 25
+            Iterator:
+              StartAt: InvokeLambda
+              States:
+                InvokeLambda:
+                  Type: Task
+                  Resource: !GetAtt DeleteAgenciesInBulkLambda.Arn
+                  InputPath: $
+                  End: true
+            End: true
+      Role: !GetAtt DeleteAgenciesStateMachineRole.Arn
+Outputs:
+  DeleteAgenciesInBulkStateMachineArn:
+    Value: !GetAtt DeleteAgenciesInBulkStateMachine.Arn

@@ -1,0 +1,76 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "VisualEditor0",
+            "Effect": "Allow",
+            "Action": [
+                "ec2:AuthorizeSecurityGroupIngress",
+                "transfer:StopServer",
+                "ec2:DeleteTags",
+                "states:DescribeStateMachine",
+                "ec2:CreateTags",
+                "transfer:UpdateServer",
+                "transfer:StartServer",
+                "s3:GetObjectAcl",
+                "s3:GetObject",
+                "cloudfront:ListTagsForResource",
+                "ec2:CreateSecurityGroup",
+                "ec2:CreateVpcEndpoint",
+                "s3:GetObjectVersionAcl",
+                "s3:GetObjectTagging",
+                "ec2:AssociateAddress",
+                "ec2:ModifyVpcEndpoint",
+                "s3:GetObjectVersion",
+                "sqs:SetQueueAttributes",
+                "cognito-idp:GetUserPoolMfaConfig"
+            ],
+            "Resource": [
+                "arn:aws:cognito-idp:us-west-2:748787612401:userpool/*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-BuilderDeleteStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-RealtorImportStateMachine-*"
+            ]
+        },
+        {
+            "Sid": "VisualEditor1",
+            "Effect": "Allow",
+            "Action": [
+                "states:UpdateStateMachine",
+                "states:DeleteStateMachine",
+                "states:UntagResource",
+                "states:TagResource",
+                "states:CreateStateMachine"
+            ],
+            "Resource": [
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-BuilderDeleteStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-RealtorImportStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-DeleteAgenciesInBulkStateMachine-*"
+            ],
+            "Condition": {
+                "StringEqualsIfExists": {
+                    "aws:ResourceTag/Owner": "contractor",
+                    "aws:ResourceTag/Application": "crm",
+                    "aws:ResourceTag/hyphen:devteam": "CRM",
+                    "aws:ResourceTag/Purpose": "deployed"
+                }
+            }
+        },
+        {
+            "Sid": "VisualEditor8",
+            "Effect": "Allow",
+            "Action": "logs:PutRetentionPolicy",
+            "Resource": [
+                "arn:aws:logs:us-west-2:748787612401:log-group:/aws/apigateway/aws-crm-*"
+            ]
+        },
+        {
+			"Sid": "VisualEditor0",
+			"Effect": "Allow",
+			"Action": [
+				"cloudformation:CreateStack",
+				"cloudformation:DeleteStack"
+			],
+			"Resource": "arn:aws:cloudformation:us-west-2:748787612401:stack/*/*"
+		}
+    ]
+}

@@ -1,0 +1,82 @@
+{
+    "dev-entities": [
+        {
+            "PutRequest": {
+                "Item": {
+                    "id": {
+                        "S": "e1f7fce0-a6e8-11e9-9619-7d7f43bb0081"
+                    },
+                    "type": {
+                        "S": "builder"
+                    },
+                    "name": {
+                        "S": "InApp Builders"
+                    },
+                    "email": {
+                        "S": "phil@inapp.com"
+                    },
+                    "phone": {
+                        "S": "789-555-9632"
+                    }
+                }                    
+            }
+        },
+        {
+            "PutRequest": {
+                "Item": {
+                    "id": {
+                        "S": "3179c00b-e82e-4a15-ac4c-8c80611aabe5"
+                    },
+                    "type": {
+                        "S": "builder"
+                    },
+                    "name": {
+                        "S": "Hyphen Homes"
+                    },
+                    "email": {
+                        "S": "deepak.pc@inapp.com"
+                    },
+                    "phone": {
+                        "S": "222-333-4455"
+                    }
+                }
+            }
+        },
+        {
+            "PutRequest": {
+                "Item": {
+                    "id": {
+                        "S": "656e98e4-aebf-11e9-a2a3-2a2ae2dbcce4"
+                    },
+                    "org_id": {
+                        "S": "e1f7fce0-a6e8-11e9-9619-7d7f43bb0081"
+                    },
+                    "type": {
+                        "S": "property"
+                    },
+                    "name": {
+                        "S": "Pine Loft Grove"
+                    }
+                }
+            }
+        },
+        {
+            "PutRequest": {
+                "Item": {
+                    "id": {
+                        "S": "656e9b46-aebf-11e9-a2a3-2a2ae2dbcce4"
+                    },
+                    "org_id": {
+                        "S": "e1f7fce0-a6e8-11e9-9619-7d7f43bb0081"
+                    },
+                    "type": {
+                        "S": "property"
+                    },
+                    "name": {
+                        "S": "Park Ridge Estates"
+                    }
+                }
+            }
+        }
+    ]
+}

@@ -1,0 +1,91 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "VisualEditor0",
+            "Effect": "Allow",
+            "Action": "apigateway:DELETE",
+            "Resource": "arn:aws:apigateway:us-west-2::/apis/*",
+            "Condition": {
+                "ArnEquals": {
+                    "aws:PrincipalArn": "arn:aws:iam::748787612401:role/hyphen/deployment/codepipeline/aws-crm/cf-deploy-aws-crm"
+                }
+            }
+        },
+        {
+            "Sid": "VisualEditor1",
+            "Effect": "Allow",
+            "Action": "apigateway:DELETE",
+            "Resource": [
+                "arn:aws:apigateway:us-west-2::/apis/*/authorizers/*",
+                "arn:aws:apigateway:us-west-2::/apis/*/integrations/*",
+                "arn:aws:apigateway:us-west-2::/apis/*/routes/*/routeresponses/*",
+                "arn:aws:apigateway:us-west-2::/apis/*/deployments/*"
+            ],
+            "Condition": {
+                "ArnEquals": {
+                    "aws:PrincipalArn": "arn:aws:iam::748787612401:role/hyphen/deployment/codepipeline/aws-crm/cf-deploy-aws-crm"
+                }
+            }
+        },
+        {
+            "Sid": "VisualEditor2",
+            "Effect": "Allow",
+            "Action": "apigateway:DELETE",
+            "Resource": "arn:aws:apigateway:us-west-2::/apis/*/routes/*",
+            "Condition": {
+                "ArnEquals": {
+                    "aws:PrincipalArn": "arn:aws:iam::748787612401:role/hyphen/deployment/codepipeline/aws-crm/cf-deploy-aws-crm"
+                }
+            }
+        },
+        {
+            "Sid": "VisualEditor3",
+            "Effect": "Allow",
+            "Action": "apigateway:DELETE",
+            "Resource": [
+                "arn:aws:apigateway:us-west-2::/restapis/*",
+                "arn:aws:apigateway:us-west-2::/domainnames/api-crm-*.*.com",
+                "arn:aws:apigateway:us-west-2::/domainnames/api-crm-*.*.com/basepathmappings/*"
+            ],
+            "Condition": {
+                "ArnEquals": {
+                    "aws:PrincipalArn": "arn:aws:iam::748787612401:role/hyphen/deployment/codepipeline/aws-crm/cf-deploy-aws-crm"
+                }
+            }
+        },
+        {
+            "Sid": "VisualEditor4",
+            "Effect": "Allow",
+            "Action": "apigateway:DELETE",
+            "Resource": [
+                "arn:aws:apigateway:us-west-2::/restapis/*/stages/*",
+                "arn:aws:apigateway:us-west-2::/restapis/*/models/*",
+                "arn:aws:apigateway:us-west-2::/restapis/*/deployments/*",
+                "arn:aws:apigateway:us-west-2::/restapis/*/resources/*/methods/*"
+            ],
+            "Condition": {
+                "ArnEquals": {
+                    "aws:PrincipalArn": "arn:aws:iam::748787612401:role/hyphen/deployment/codepipeline/aws-crm/cf-deploy-aws-crm"
+                }
+            }
+        },
+        {
+            "Sid": "VisualEditor5",
+            "Effect": "Allow",
+            "Action": "apigateway:TagResource",
+            "Resource": "arn:aws:apigateway:us-west-2::/apis/*/stages",
+            "Condition": {
+                "ArnEquals": {
+                    "aws:PrincipalArn": "arn:aws:iam::748787612401:role/hyphen/deployment/codepipeline/aws-crm/cf-deploy-aws-crm"
+                }
+            }
+        },
+        {
+            "Sid": "VisualEditor6",
+            "Effect": "Allow",
+            "Action": "logs:PutRetentionPolicy",
+            "Resource": "arn:aws:logs:us-west-2:748787612401:log-group:/aws/lambda/aws-crm-*"
+        }
+    ]
+}

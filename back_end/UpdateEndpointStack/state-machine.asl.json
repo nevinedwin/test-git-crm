@@ -1,0 +1,289 @@
+{
+  "Comment": "State machine for updating the endpoint with new field",
+  "StartAt": "ChooseAction?",
+  "States": {
+    "ChooseAction?": {
+      "Comment": "Based on the purpose variable, this state machine performs different tasks",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.purpose",
+          "StringEquals": "metroUpdation",
+          "Next": "FetchEntities"
+        }
+      ],
+      "Default": "GetHomeBuilders"
+    },
+    "FetchEntities": {
+      "Type": "Task",
+      "Resource": "${FetchEntitiesLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "Next": "isEntityFetchSuccess?"
+    },
+    "isEntityFetchSuccess?":{
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.status",
+          "BooleanEquals": true,
+          "Next": "SkipToIterator?"
+        }
+      ],
+      "Default": "ExceptionOccured"
+    },
+    "SkipToIterator?": {
+      "Comment": "Continue straight to EntityIterator.",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "And": [
+            {
+              "Variable": "$.skipToIterator",
+              "BooleanEquals": true
+            },
+            {
+              "Variable": "$.type",
+              "StringEquals": "customer"
+            }
+          ],
+          "Next": "EntityIterator"
+        }
+      ],
+      "Default": "SetIteratorCount"
+    },
+    "SetIteratorCount": {
+      "Type": "Pass",
+      "Result": {
+        "index": -1
+      },
+      "ResultPath": "$.iterator",
+      "Next": "EntityIterator"
+    },
+    "EntityIterator": {
+      "Type": "Task",
+      "Resource": "${EntityIteratorLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "ResultPath": "$.iterator",
+      "Next": "IsCountReached?"
+    },
+    "IsCountReached?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "And": [
+            {
+              "Variable": "$.iterator.continue",
+              "BooleanEquals": true
+            },
+            {
+              "Variable": "$.type",
+              "StringEquals": "customer"
+            }
+          ],
+          "Next": "PrepareCustomer"
+        },
+        {
+          "And": [
+            {
+              "Variable": "$.iterator.continue",
+              "BooleanEquals": true
+            },
+            {
+              "Variable": "$.type",
+              "StringEquals": "realtor"
+            }
+          ],
+          "Next": "UpdateRealtor"
+        }
+      ],
+      "Default": "EndpointComplete"
+    },
+    "PrepareCustomer": {
+      "Type": "Task",
+      "Resource": "${PrepareCustomerLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "Next": "UpdateCustomerEndpoints"
+    },
+    "UpdateCustomerEndpoints": {
+      "Type": "Map",
+      "ItemsPath": "$.customerList",
+      "Parameters": {
+        "customer.$": "$$.Map.Item.Value",
+        "idMappedValue.$": "$.idMappedValue",
+        "coBuyerLambdaArn.$":"$.coBuyerLambdaArn"
+      },
+      "MaxConcurrency": 40,
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "ExceptionOccured"
+        }
+      ],
+      "Iterator": {
+        "StartAt": "UpdateCustomer",
+        "States": {
+          "UpdateCustomer": {
+            "Type": "Task",
+            "Resource": "${UpdateCustomerLambdaArn}",
+            "TimeoutSeconds": 86400,
+            "HeartbeatSeconds": 3600,
+            "End": true
+          }
+        }
+      },
+      "ResultPath": null,
+      "Next": "EntityIterator"
+    },
+    "UpdateRealtor": {
+      "Type": "Task",
+      "Resource": "${UpdateRealtorLambdaArn}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "Next": "IsRealtorUpdateSuccess?"
+    },
+    "IsRealtorUpdateSuccess?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.status",
+          "BooleanEquals": true,
+          "Next": "EntityIterator"
+        }
+      ],
+      "Default": "ExceptionOccured"
+    },
+    "GetHomeBuilders": {
+      "Type": "Task",
+      "Resource": "${builderLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "Next": "Continue?"
+    },
+    "Continue?": {
+      "Comment": "If the builder is valid with an id",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.isValidBuilder",
+          "BooleanEquals": true,
+          "Next": "SkipToGetCustomerIterator?"
+        }
+      ],
+      "Default": "EndpointComplete"
+    },
+    "SkipToGetCustomerIterator?": {
+      "Comment": "Continue straight to GetCustomerIterator.",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.skipToGetCustomerIterator",
+          "BooleanEquals": true,
+          "Next": "GetCustomerIterator"
+        }
+      ],
+      "Default": "ConfigureGetCustomersCount"
+    },
+    "ConfigureGetCustomersCount": {
+      "Type": "Pass",
+      "Result": {
+        "index": -1,
+        "step": 200
+      },
+      "ResultPath": "$.getcustomeriterator",
+      "Next": "GetCustomerIterator"
+    },
+    "GetCustomerIterator": {
+      "Type": "Task",
+      "Resource": "${getCustomerIteratorLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "ResultPath": "$.getcustomeriterator",
+      "Next": "IsGetCustomerCountReached"
+    },
+    "IsGetCustomerCountReached": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.getcustomeriterator.continue",
+          "BooleanEquals": true,
+          "Next": "GetCustomers"
+        }
+      ],
+      "Default": "EndpointComplete"
+    },
+    "GetCustomers": {
+      "Type": "Task",
+      "Resource": "${getCustomerLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "Next": "CustomersFound?"
+    },
+    "CustomersFound?": {
+      "Comment": "If there are customers under the builder",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.isCustomersFound",
+          "BooleanEquals": false,
+          "Next": "EndpointComplete"
+        }
+      ],
+      "Default": "UpdateAllEndpoints"
+    },
+    "UpdateAllEndpoints": {
+      "Type": "Map",
+      "ItemsPath": "$.customerList",
+      "Parameters": {
+        "customer.$": "$$.Map.Item.Value",
+        "optin.$": "$.optin"
+      },
+      "MaxConcurrency": 40,
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "ExceptionOccured"
+        }
+      ],
+      "Iterator": {
+        "StartAt": "UpdateEndpoint",
+        "States": {
+          "UpdateEndpoint": {
+            "Type": "Task",
+            "Resource": "${updateEndpointArn}",
+            "TimeoutSeconds": 86400,
+            "HeartbeatSeconds": 3600,
+            "End": true
+          }
+        }
+      },
+      "ResultPath": null,
+      "Next": "GetCustomerIterator"
+    },
+    "EndpointComplete": {
+      "Type": "Task",
+      "Resource": "${endpointCompleteLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "Next": "EndProcess"
+    },
+    "ExceptionOccured": {
+      "Type": "Task",
+      "Resource": "${exceptionLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "Next": "InvalidRequest"
+    },
+    "InvalidRequest": {
+      "Type": "Fail",
+      "Cause": "Invalid request/Exception occured",
+      "Error": "Request contains invalid or missing values/Exception"
+    },
+    "EndProcess": {
+      "Type": "Pass",
+      "End": true
+    }
+  }
+}

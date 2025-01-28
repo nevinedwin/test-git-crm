@@ -1,0 +1,46 @@
+Resources:
+  EntitiesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ${self:custom.entitiesTableName}
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: type
+          AttributeType: S
+        - AttributeName: org_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+        - AttributeName: type
+          KeyType: RANGE
+      # Set the capacity based on the stage
+      ProvisionedThroughput:
+        ReadCapacityUnits: ${self:custom.tableThroughput}
+        WriteCapacityUnits: ${self:custom.tableThroughput}
+      StreamSpecification:
+        StreamViewType: 'NEW_IMAGE'
+      GlobalSecondaryIndexes:
+        - IndexName: ${self:custom.entitiesTableByOrgId}
+          KeySchema:
+          - AttributeName: org_id
+            KeyType: HASH
+          - AttributeName: type
+            KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: ${self:custom.tableThroughput}
+            WriteCapacityUnits: ${self:custom.tableThroughput}
+        - IndexName: ${self:custom.entitiesTableByType}
+          KeySchema:
+          - AttributeName: type
+            KeyType: HASH
+          - AttributeName: id
+            KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: ${self:custom.tableThroughput}
+            WriteCapacityUnits: ${self:custom.tableThroughput}

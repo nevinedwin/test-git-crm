@@ -1,0 +1,184 @@
+{
+  "Comment": "State machine for calculating entity import",
+  "StartAt": "SkipToCustomerImport?",
+  "States": {
+    "SkipToCustomerImport?": {
+      "Comment": "Whether to skip straight to customer import next iteration",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.skipToCustomerImport",
+          "BooleanEquals": true,
+          "Next": "ImportIterator"
+        }
+      ],
+      "Default": "ConvertCSVAndValidate"
+    },
+    "ConvertCSVAndValidate": {
+      "Type": "Task",
+      "Resource": "${convertCSVLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "Next": "IsValidCSV?"
+    },
+    "IsValidCSV?": {
+      "Comment": "If the CSV is Valid",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.isValidCSV",
+          "BooleanEquals": true,
+          "Next": "FormatCustomers"
+        }
+      ],
+      "Default": "ErrorOccured"
+    },
+    "FormatCustomers": {
+      "Type": "Task",
+      "Resource": "${formatCustomersLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "Next": "ValidateCustomers"
+    },
+    "ValidateCustomers": {
+      "Type": "Task",
+      "Resource": "${validateCustomersLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "Next": "IsValidCustomers?"
+    },
+    "IsValidCustomers?": {
+      "Comment": "If the customers in the request JSON are valid",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.isValidCustomers",
+          "BooleanEquals": true,
+          "Next": "ConfigureImportCount"
+        }
+      ],
+      "Default": "ErrorOccured"
+    },
+    "ConfigureImportCount": {
+      "Type": "Pass",
+      "Result": {
+        "index": -1,
+        "step": 100
+      },
+      "ResultPath": "$.importiterator",
+      "Next": "ImportIterator"
+    },
+    "ImportIterator": {
+      "Type": "Task",
+      "Resource": "${importIteratorLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "ResultPath": "$.importiterator",
+      "Next": "IsCustomersCountReached?"
+    },
+    "IsCustomersCountReached?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.importiterator.continue",
+          "BooleanEquals": true,
+          "Next": "PrepareCustomerList"
+        }
+      ],
+      "Default": "CustomerImportComplete"
+    },
+    "PrepareCustomerList": {
+      "Type": "Task",
+      "Resource": "${prepareCustomerListLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "Next": "ImportAllCustomers"
+    },
+    "ImportAllCustomers": {
+      "Type": "Map",
+      "ItemsPath": "$.customerList",
+      "Parameters": {
+        "list.$": "$$.Map.Item.Value",
+        "validatedFileKey.$": "$.validatedFileKey",
+        "statusFileKey.$": "$.statusFileKey",
+        "doImportCustomerExecution.$": "$.doImportCustomerExecution",
+        "BuildersApiFunctionArn.$": "$.BuildersApiFunctionArn",
+        "SearchApiFunctionArn.$": "$.SearchApiFunctionArn",
+        "ActivitiesApiFunctionArn.$": "$.ActivitiesApiFunctionArn"
+      },
+      "MaxConcurrency": 40,
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "ErrorOccured"
+        }
+      ],
+      "Iterator": {
+        "StartAt": "ImportCustomer",
+        "States": {
+          "ImportCustomer": {
+            "Type": "Task",
+            "Resource": "${importCustomerLambdaARN}",
+            "TimeoutSeconds": 86400,
+            "HeartbeatSeconds": 3600,
+            "Next": "IsCustomerCreated?"
+          },
+          "IsCustomerCreated?": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.status",
+                "BooleanEquals": true,
+                "Next": "ImportCustomerActivities"
+              }
+            ],
+            "Default": "ImportComplete"
+          },
+          "ImportCustomerActivities": {
+            "Type": "Task",
+            "Resource": "${importCustomerActivitiesLambdaARN}",
+            "TimeoutSeconds": 86400,
+            "HeartbeatSeconds": 3600,
+            "Next": "PublishCustomerMessages"
+          },
+          "PublishCustomerMessages": {
+            "Type": "Task",
+            "Resource": "${publishCustomerMessagesLambdaARN}",
+            "TimeoutSeconds": 86400,
+            "HeartbeatSeconds": 3600,
+            "Next": "ImportComplete"
+          },
+          "ImportComplete": {
+            "Type": "Pass",
+            "End": true
+          }
+        }
+      },
+      "ResultPath": "$.error",
+      "Next": "ImportIterator"
+    },
+    "CustomerImportComplete": {
+      "Type": "Task",
+      "Resource": "${importCompleteLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "Next": "EndProcess"
+    },
+    "ErrorOccured": {
+      "Type": "Task",
+      "Resource": "${errorLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "Next": "ImportFailed"
+    },
+    "ImportFailed": {
+      "Type": "Fail",
+      "Cause": "Invalid request/Exception occured",
+      "Error": "Request contains invalid or missing values/Exception"
+    },
+    "EndProcess": {
+      "Type": "Pass",
+      "End": true
+    }
+  }
+}

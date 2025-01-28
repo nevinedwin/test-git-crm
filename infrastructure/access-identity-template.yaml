@@ -1,0 +1,40 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: "Hyphen CRM SAM Template"
+
+Parameters:
+  StackNamePrefix:
+    Type: String
+Resources:
+  CRMOriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub This is an Origin Access Identity(OAI) for CloudFront Distribution for ${StackNamePrefix}
+  FileManagerAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub This is an Origin Access Identity(OAI) for CloudFront Distribution for ${StackNamePrefix}
+
+Outputs:
+  CRMOriginAccessIdentity:
+    Description: "CRMOriginAccessIdentity"
+    Value: !Ref CRMOriginAccessIdentity
+    Export:
+      Name: !Sub "${AWS::StackName}-CRMOriginAccessIdentity"
+  CFCanonicalUserId:
+    Description: "CFCanonicalUserId"
+    Value: !GetAtt CRMOriginAccessIdentity.S3CanonicalUserId
+    Export:
+      Name: !Sub "${AWS::StackName}-CFCanonicalUserId"
+  FileManagerAccessIdentity:
+    Description: "FileManagerAccessIdentity"
+    Value: !Ref FileManagerAccessIdentity
+    Export:
+      Name: !Sub "${AWS::StackName}-FileManagerAccessIdentity"
+  FileManagerCanonicalUserId:
+    Description: "FileManagerCanonicalUserId"
+    Value: !GetAtt FileManagerAccessIdentity.S3CanonicalUserId
+    Export:
+      Name: !Sub "${AWS::StackName}-FileManagerCanonicalUserId"

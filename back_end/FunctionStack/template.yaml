@@ -1,0 +1,4207 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Test SAM Template
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 60
+    Layers:
+      - !Ref AwsSdkLayer
+    Environment:
+      Variables:
+        entitiesTableName: !Sub ${StackNamePrefix}entities-${StageName}-db
+        entitiesTableByEntityAndId: !Sub ${StackNamePrefix}byEntityAndIdIndex-${StageName}-db
+        entitiesTableByDataAndEntity: !Sub ${StackNamePrefix}byDataAndEntityIndex-${StageName}-db
+        STACK_PREFIX: !Ref StackNamePrefix
+        ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+        ES_REGION: !Ref AWS::Region
+        FIREHOSE_ES_INDEX: !Ref firehoseESIndex
+        PINPOINT_ES_DATA: !Ref pinpointESData
+        EnvironmentTag: !Ref StageName
+        ApplicationTag: !Ref ApplicationTag
+        OwnerTag: !Ref OwnerTag
+        PurposeTag: !Ref PurposeTag
+        DELETE_PROFILE_DATA_STATE_MACHINE_ARN: !Ref DeleteProfileDataStateMachineArn
+    Tags:
+      Environment: !Ref StageName
+      Application: !Ref ApplicationTag
+      Owner: !Ref OwnerTag
+      Purpose: !Ref PurposeTag
+      Service: lambda
+Parameters:
+  StageName:
+    Type: String
+  StackNamePrefix:
+    Type: String
+  AwsSdkLayer:
+    Type: String
+  HyphenLambdaManagedPolicy:
+    Type: String
+  CognitoUserPoolARN:
+    Type: String
+  CognitoUserPool:
+    Type: String
+  CognitoUserPoolClient:
+    Type: String
+  HyphenCRMFirehoseARN:
+    Type: String
+  FirehosePinpointRoleARN:
+    Type: String
+  ElasticsearchDomainEndpoint:
+    Type: String
+  pinpointESData:
+    Type: String
+  firehoseESIndex:
+    Type: String
+  ElasticRoleARN:
+    Type: String
+  CampaignRoleARN:
+    Type: String
+  DynamoDBStreamARN:
+    Type: String
+  FileManagerBucketARN:
+    Type: String
+  FileManagerRegionalDomainName:
+    Type: String
+  DynamoDBArn:
+    Type: String
+  CognitoUserPoolExtArn:
+    Type: String
+  ClientID:
+    Type: String
+  ResponseType:
+    Type: String
+  RedirectURI:
+    Type: String
+  Scope:
+    Type: String
+  AuthDomain:
+    Type: String
+  ExternalUserPoolId:
+    Type: String
+  APISSLCertARN:
+    Type: String
+  APIDomainName:
+    Type: String
+  ExtAPIDomainName:
+    Type: String
+  EnDCryptKeyARN:
+    Type: String
+  ElasticsearchDomain:
+    Type: String
+  IsEnableCustomDomain:
+    Type: String
+  StackName:
+    Type: String
+  DomainName:
+    Type: String
+  UserPoolId:
+    Type: String
+  LeadAPIStateMachineArn:
+    Type: String
+  DataExportStateMachineArn:
+    Type: String
+  DataImportStateMachineArn:
+    Type: String
+  StageDateStateMachineArn:
+    Type: String
+  ReportsStateMachineArn:
+    Type: String
+  CleanupStateMachineArn:
+    Type: String
+  EmailActivityUpdateStateMachineArn:
+    Type: String
+  TransferServerId:
+    Type: String
+  TransferServerUserRoleARN:
+    Type: String
+  TransferImportPostProcessingRoleARN:
+    Type: String
+  TransferWorkflowExecutionRoleARN:
+    Type: String
+  TransferWorkflowLambdaARN:
+    Type: String
+  TransferWorkflowExceptionLambdaARN:
+    Type: String
+  SFTPCustomDomain:
+    Type: String
+  CreateSFTPServer:
+    Type: String
+  CustomerImportStateMachineArn:
+    Type: String
+  DeleteProfileDataStateMachineArn:
+    Type: String
+  BuilderDeleteStateMachineArn:
+    Type: String
+  NoteImportStateMachineArn:
+    Type: String
+  CobuyerImportStateMachineArn:
+    Type: String
+  RealtorImportStateMachineArn:
+    Type: String
+  EndpointStateMachineArn:
+    Type: String
+  HyphenCRMWebSocketsGatewayPOSTEndpoint:
+    Type: String
+  HyphenCRMWebSocketsGateway:
+    Type: String
+  SESConfigSetName:
+    Type: String
+    Default: NoValue
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+  NestedStackPrefix:
+    Type: String
+    Default: function-
+  ExternalEmailConfigDomain:
+    Type: String
+    Default: hyphencrm.com
+  SESEmailRecievingRule:
+    Type: String
+    Default: hyphen-incoming-email
+  HyphenCRMWebSocketPostURL:
+    Type: String
+  HyphenCRMWebSocketURL:
+    Type: String
+  DeleteAgenciesInBulkStateMachineArn:
+    Type: String
+Conditions:
+  EnableCustomDomain: !Equals
+    - !Ref IsEnableCustomDomain
+    - 'true'
+  EnableSFTPServer: !Equals
+    - !Ref CreateSFTPServer
+    - 'yes'
+Resources:
+  BuildersApiFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: BuildersApiFunctionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:Query
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:DescribeStream
+                  - dynamodb:GetRecords
+                  - dynamodb:GetShardIterator
+                  - dynamodb:ListStreams
+                  - dynamoDb:describeTable
+                  - dynamodb:BatchGetItem
+                  - dynamodb:BatchWriteItem
+                Resource:
+                  - !Ref DynamoDBArn
+                  - !Sub ${DynamoDBArn}/index/*
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: !Ref FirehosePinpointRoleARN
+              - Effect: Allow
+                Action:
+                  - mobiletargeting:TagResource
+                  - mobiletargeting:CreateApp
+                  - mobiletargeting:UpdateEmailChannel
+                Resource: !Sub arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*
+              - Effect: Allow
+                Action:
+                  - mobiletargeting:PutEventStream
+                Resource: !Sub arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/eventstream
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:PutParameter
+                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/CRM/CustomerData/PublicConfig
+              - Effect: Allow
+                Action:
+                  - ssm:DescribeParameters
+                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:*
+              - Effect: Allow
+                Action:
+                  - cognito-idp:AdminCreateUser
+                  - cognito-idp:AdminDeleteUser
+                  - cognito-idp:AdminSetUserPassword
+                Resource: !Ref CognitoUserPoolExtArn
+              - Effect: Allow
+                Action:
+                  - kms:Encrypt
+                  - kms:Decrypt
+                Resource: !Ref EnDCryptKeyARN
+              - Effect: Allow
+                Action:
+                  - ses:VerifyEmailIdentity
+                  - ses:GetIdentityVerificationAttributes
+                  - ses:GetIdentityDkimAttributes
+                  - ses:VerifyDomainDkim
+                  - ses:SetIdentityDkimEnabled
+                  - ses:SendCustomVerificationEmail
+                  - ses:GetCustomVerificationEmailTemplate
+                  - ses:CreateCustomVerificationEmailTemplate
+                  - ses:UpdateCustomVerificationEmailTemplate
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - states:StartExecution
+                Resource:
+                  - !Ref DataExportStateMachineArn
+                  - !Ref DataImportStateMachineArn
+                  - !Ref StageDateStateMachineArn
+                  - !Ref EmailActivityUpdateStateMachineArn
+                  - !Ref EndpointStateMachineArn
+                  - !Ref BuilderDeleteStateMachineArn
+              - !If
+                - EnableSFTPServer
+                - Effect: Allow
+                  Action:
+                    - iam:PassRole
+                  Resource:
+                    - !Ref TransferServerUserRoleARN
+                    - !Ref TransferImportPostProcessingRoleARN
+                - !Ref AWS::NoValue
+              - !If
+                - EnableSFTPServer
+                - Effect: Allow
+                  Action:
+                    - transfer:DescribeUser
+                    - transfer:CreateUser
+                    - transfer:DescribeServer
+                    - transfer:UpdateServer
+                    - transfer:CreateWorkflow
+                    - transfer:DeleteSshPublicKey
+                    - transfer:ImportSshPublicKey
+                    - transfer:TagResource
+                  Resource:
+                    - !Sub arn:aws:transfer:${AWS::Region}:${AWS::AccountId}:user/${TransferServerId}/*
+                    - !Sub arn:aws:transfer:${AWS::Region}:${AWS::AccountId}:server/${TransferServerId}
+                    - !Sub arn:aws:transfer:${AWS::Region}:${AWS::AccountId}:workflow/*
+                - !Ref AWS::NoValue
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+              - Effect: Allow
+                Action:
+                  - secretsmanager:CreateSecret
+                  - secretsmanager:TagResource
+                  - secretsmanager:DescribeSecret
+                  - secretsmanager:RestoreSecret
+                  - secretsmanager:DeleteSecret
+                  - secretsmanager:UpdateSecret
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    aws:ResourceTag/Application: crm
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetRandomPassword
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                Resource: !GetAtt ElasticFailDLQ.Arn
+              - Effect: Allow
+                Action:
+                  - es:ESHttpPost
+                Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+  TokensApiFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Path: /
+      Policies:
+        - PolicyName: TokensApiFunctionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - execute-api:Invoke
+                Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+              - Effect: Allow
+                Action:
+                  - cognito-idp:DescribeUserPoolClient
+                Resource: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*
+              - Effect: Allow
+                Action:
+                  - kms:Encrypt
+                  - kms:Decrypt
+                Resource: !Ref EnDCryptKeyARN
+              - Effect: Allow
+                Action:
+                  - dynamodb:Query
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:DescribeStream
+                  - dynamodb:GetRecords
+                  - dynamodb:GetShardIterator
+                  - dynamodb:ListStreams
+                  - dynamoDb:describeTable
+                  - dynamodb:BatchGetItem
+                Resource:
+                  - !Ref DynamoDBArn
+                  - !Sub ${DynamoDBArn}/index/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+  CustomersApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: customers.main
+      CodeUri: customers
+      MemorySize: 512
+      Timeout: 900
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}CustomersApiFunction-${StageName}
+      Environment:
+        Variables:
+          STACK_PREFIX: !Ref StackNamePrefix
+          ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+          ES_REGION: !Ref AWS::Region
+          FIREHOSE_ES_INDEX: !Ref firehoseESIndex
+          PINPOINT_ES_DATA: !Ref pinpointESData
+          DYNAMODB_KMS_KEY_ID: !Ref EnDCryptKeyARN
+          CLEANUP_MACHINE_ARN: !Ref CleanupStateMachineArn
+          ACTIVITY_LAMBDA_ARN: !GetAtt ActivitiesApiFunction.Arn
+          DATA_MIGRAION_MACHINE_ARN: !Ref DataExportStateMachineArn
+          NOTIFICATION_LAMBDA_ARN: !GetAtt NotificationApiFunction.Arn
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - mobiletargeting:DeleteEndpoint
+              Resource: !Sub arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/endpoints/*
+            - Effect: Allow
+              Action:
+                - SNS:Publish
+              Resource: !Sub arn:aws:sns:${AWS::Region}:${AWS::AccountId}:*
+            - Effect: Allow
+              Action:
+                - execute-api:Invoke
+              Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+                - es:ESHttpPut
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+              Resource: !Ref EnDCryptKeyARN
+            - Effect: Allow
+              Action:
+                - states:StartExecution
+              Resource:
+                - !Ref CleanupStateMachineArn
+                - !Ref DataExportStateMachineArn
+      Events:
+        CustomersCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/customers/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        CustomersRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/customers/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        CustomersWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  CustomersApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CustomersApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  BulkCustomerFailDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${StackNamePrefix}BulkCustomerFailDLQ-${StageName}-sqs
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: sqs
+  BulkRealtorFailDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${StackNamePrefix}BulkRealtorFailDLQ-${StageName}-sqs
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: sqs
+  BulkAgencyFailDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${StackNamePrefix}BulkAgencyFailDLQ-${StageName}-sqs
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: sqs
+  BulkCustomerCreateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: bulkcustomer.main
+      CodeUri: bulkcustomer
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt BulkCustomerFailDLQ.Arn
+      MemorySize: 512
+      Timeout: 900
+      ReservedConcurrentExecutions: 1
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}BulkCustomerCreateFunction-${StageName}
+      Environment:
+        Variables:
+          STACK_PREFIX: !Ref StackNamePrefix
+          ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+          ES_REGION: !Ref AWS::Region
+          FILE_MANAGER_BUCKET_NAME: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+          ACTIVITY_LAMBDA_ARN: !GetAtt ActivitiesApiFunction.Arn
+          COMMUNITY_LAMBDA_ARN: !GetAtt CommunitiesApiFunction.Arn
+          NOTIFICATION_LAMBDA_ARN: !GetAtt NotificationApiFunction.Arn
+          USER_LAMBDA_ARN: !GetAtt UsersApiFunction.Arn
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - SNS:Publish
+              Resource: !Sub arn:aws:sns:${AWS::Region}:${AWS::AccountId}:*
+            - Effect: Allow
+              Action:
+                - execute-api:Invoke
+              Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+                - es:ESHttpPut
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:GetObject
+              Resource:
+                - !Sub ${FileManagerBucketARN}/*
+            - Effect: Allow
+              Action:
+                - sqs:SendMessage
+              Resource: !GetAtt BulkCustomerFailDLQ.Arn
+            - Effect: Allow
+              Action:
+                - ses:SendEmail
+              Resource: !Sub arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/*
+      Events:
+        BulkCustomersCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/bulkcustomers/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        BulkCustomersCreateExternal:
+          Type: Api
+          Properties:
+            Path: /api/auth/external/customers/create
+            Method: POST
+            RestApiId: !Ref HyphenCRMGatewayExternal
+        BulkCustomersCreateExternalv2:
+          Type: Api
+          Properties:
+            Path: /api/auth/external/v2/customers/create
+            Method: POST
+            RestApiId: !Ref HyphenCRMGatewayExternal
+        BulkCustomersWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  BulkCustomerCreateFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${BulkCustomerCreateFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  BulkCustomerCreateFunctionRetryConfig:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      DestinationConfig:
+        OnFailure:
+          Destination: !GetAtt BulkCustomerFailDLQ.Arn
+      FunctionName: !Ref BulkCustomerCreateFunction
+      MaximumRetryAttempts: 0
+      Qualifier: $LATEST
+  BulkRealtorCreateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: bulkrealtor.main
+      CodeUri: bulkrealtor
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt BulkRealtorFailDLQ.Arn
+      MemorySize: 512
+      Timeout: 900
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}BulkRealtorCreateFunction-${StageName}
+      Environment:
+        Variables:
+          STACK_PREFIX: !Ref StackNamePrefix
+          ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+          ES_REGION: !Ref AWS::Region
+          FILE_MANAGER_BUCKET_NAME: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+          COMMUNITIES_LAMBDA_ARN: !GetAtt CommunitiesApiFunction.Arn
+          REALTORS_LAMBDA_ARN: !GetAtt RealtorsApiFunction.Arn
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - SNS:Publish
+              Resource: !Sub arn:aws:sns:${AWS::Region}:${AWS::AccountId}:*
+            - Effect: Allow
+              Action:
+                - execute-api:Invoke
+              Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+                - es:ESHttpPut
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:GetObject
+              Resource:
+                - !Sub ${FileManagerBucketARN}/*
+            - Effect: Allow
+              Action:
+                - sqs:SendMessage
+              Resource: !GetAtt BulkRealtorFailDLQ.Arn
+      Events:
+        BulkRealtorCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/bulkrealtor/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        BulkRealtorCreateExternal:
+          Type: Api
+          Properties:
+            Path: /api/auth/external/realtor/create
+            Method: POST
+            RestApiId: !Ref HyphenCRMGatewayExternal
+        BulkRealtorWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  BulkRealtorCreateFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${BulkRealtorCreateFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  BulkRealtorCreateFunctionRetryConfig:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      DestinationConfig:
+        OnFailure:
+          Destination: !GetAtt BulkRealtorFailDLQ.Arn
+      FunctionName: !Ref BulkRealtorCreateFunction
+      MaximumRetryAttempts: 0
+      Qualifier: $LATEST
+  BulkAgencyCreateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: bulkagency.main
+      CodeUri: bulkagency
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt BulkAgencyFailDLQ.Arn
+      MemorySize: 512
+      Timeout: 900
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}BulkAgencyCreateFunction-${StageName}
+      Environment:
+        Variables:
+          STACK_PREFIX: !Ref StackNamePrefix
+          ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+          ES_REGION: !Ref AWS::Region
+          FILE_MANAGER_BUCKET_NAME: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+          METROS_LAMBDA_ARN: !GetAtt MetrosApiFunction.Arn
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - SNS:Publish
+              Resource: !Sub arn:aws:sns:${AWS::Region}:${AWS::AccountId}:*
+            - Effect: Allow
+              Action:
+                - execute-api:Invoke
+              Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+                - es:ESHttpPut
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:GetObject
+              Resource:
+                - !Sub ${FileManagerBucketARN}/*
+            - Effect: Allow
+              Action:
+                - sqs:SendMessage
+              Resource: !GetAtt BulkAgencyFailDLQ.Arn
+      Events:
+        BulkAgencysCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/bulkagency/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        BulkAgencysCreateExternal:
+          Type: Api
+          Properties:
+            Path: /api/auth/external/agencies/create
+            Method: POST
+            RestApiId: !Ref HyphenCRMGatewayExternal
+        BulkAgencysWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  BulkAgencyCreateFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${BulkAgencyCreateFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  BulkAgencyCreateFunctionRetryConfig:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      DestinationConfig:
+        OnFailure:
+          Destination: !GetAtt BulkAgencyFailDLQ.Arn
+      FunctionName: !Ref BulkAgencyCreateFunction
+      MaximumRetryAttempts: 0
+      Qualifier: $LATEST
+  TokensApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: token.main
+      CodeUri: token
+      Role: !GetAtt TokensApiFunctionRole.Arn
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}TokensApiFunction-${StageName}
+      Environment:
+        Variables:
+          CLIENT_ID: !Ref ClientID
+          RESPONSE_TYPE: !Ref ResponseType
+          REDIRECT_URI: !Ref RedirectURI
+          SCOPE: !Ref Scope
+          AUTH_DOMAIN: !Ref AuthDomain
+          CODE_CHALLENGE_METHOD: S256
+          EXTERNAL_USER_POOL_ID: !Ref ExternalUserPoolId
+          EXTERNAL_USER_POOL_CLIENT_ID: !Ref ExternalUserPoolId
+          DYNAMODB_KMS_KEY_ID: !Ref EnDCryptKeyARN
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+      Events:
+        TokenExternal:
+          Type: Api
+          Properties:
+            Path: /api/auth/external/token/get
+            Method: POST
+            RestApiId: !Ref HyphenCRMGatewayExternal
+            Auth:
+              Authorizer: NONE
+        TokensWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  TokensApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${TokensApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  CobuyersApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: cobuyers.main
+      CodeUri: cobuyers
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}CobuyersApiFunction-${StageName}
+      Environment:
+        Variables:
+          STACK_PREFIX: !Ref StackNamePrefix
+          ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+          ES_REGION: !Ref AWS::Region
+          FIREHOSE_ES_INDEX: !Ref firehoseESIndex
+          PINPOINT_ES_DATA: !Ref pinpointESData
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - mobiletargeting:DeleteEndpoint
+              Resource: !Sub arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/endpoints/*
+      Events:
+        CobuyersCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/cobuyers/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        CobuyersRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/cobuyers/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        CobuyersWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  CobuyersApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CobuyersApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  UsersApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: users.main
+      CodeUri: users
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}UsersApiFunction-${StageName}
+      Environment:
+        Variables:
+          REGION: !Ref AWS::Region
+          ACCOUNT_ID: !Ref AWS::AccountId
+          USER_POOL_ID: !Ref CognitoUserPool
+          USER_CLIENT_ID: !Ref CognitoUserPoolClient
+          UserPoolId: !Ref UserPoolId
+          StackName: !Ref StackName
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:*
+              Resource: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPool}
+            - Effect: Allow
+              Action:
+                - ses:VerifyEmailIdentity
+                - ses:GetIdentityVerificationAttributes
+                - ses:SendCustomVerificationEmail
+                - ses:GetCustomVerificationEmailTemplate
+                - ses:CreateCustomVerificationEmailTemplate
+                - ses:UpdateCustomVerificationEmailTemplate
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+            - Effect: Allow
+              Action:
+                - cloudformation:DescribeStacks
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: '*'
+      Events:
+        UsersCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/users/{type}/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        UsersRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/users/{type}/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        UsersWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  UsersApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${UsersApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  BuildersApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: builders.main
+      CodeUri: builders
+      Role: !GetAtt BuildersApiFunctionRole.Arn
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}BuildersApiFunction-${StageName}
+      Environment:
+        Variables:
+          REGION: !Ref AWS::Region
+          ACCOUNT_ID: !Ref AWS::AccountId
+          FIREHOSE_ARN: !Ref HyphenCRMFirehoseARN
+          FIREHOSE_PINPOINT_ROLE: !Ref FirehosePinpointRoleARN
+          EXT_USER_POOL_ID: !Ref ExternalUserPoolId
+          DYNAMODB_KMS_KEY_ID: !Ref EnDCryptKeyARN
+          EXTERNAL_ENDPOINT: !Sub https://${ExtAPIDomainName}/${StageName}
+          DATA_MIGRAION_MACHINE_ARN: !Ref DataExportStateMachineArn
+          DATA_IMPORT_MACHINE_ARN: !Ref DataImportStateMachineArn
+          STAGE_DATE_MACHINE_ARN: !Ref StageDateStateMachineArn
+          EMAIL_ACTIVITY_UPDATE_MACHINE_ARN: !Ref EmailActivityUpdateStateMachineArn
+          ENDPOINT_UPDATE_MACHINE_ARN: !Ref EndpointStateMachineArn
+          PROJECT_NAME: !Ref StackName
+          S3_BUCKET_ARN: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+          SERVER_ID: !Ref TransferServerId
+          FTP_USER_ROLE_ARN: !Ref TransferServerUserRoleARN
+          TRANSFER_WORKFLOW_EXECUTION_ROLE: !Ref TransferWorkflowExecutionRoleARN
+          TRANSFER_WORKFLOW_LAMBDA_ARN: !Ref TransferWorkflowLambdaARN
+          TRANSFER_WORKFLOW_EXCEPTION_LAMBDA_ARN: !Ref TransferWorkflowExceptionLambdaARN
+          SFTP_CUSTOM_DOMAIN: !Ref SFTPCustomDomain
+          CUSTOM_DOMAIN_ENABLED: !Ref IsEnableCustomDomain
+          FILE_MANAGER_BUCKET_NAME: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+          ELASTIC_DLQ_URL: !Ref ElasticFailDLQ
+          COMMUNITY_LAMBDA_ARN: !GetAtt CommunitiesApiFunction.Arn
+          AGENCIES_LAMBDA_ARN: !GetAtt AgenciesApiFunction.Arn
+          COBUYER_LAMBDA_ARN: !GetAtt CobuyersApiFunction.Arn
+          BUILDER_DELETE_STATEMACHINE_ARN: !Ref BuilderDeleteStateMachineArn
+          USERS_LAMBDA_ARN: !GetAtt UsersApiFunction.Arn
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+      Events:
+        BuildersCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/builders/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        BuildersRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/builders/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        BuildersList:
+          Type: Api
+          Properties:
+            Path: /api/auth/builders/{action}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        BuildersWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  BuildersApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${BuildersApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  CommunitiesApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: communities.main
+      CodeUri: communities
+      MemorySize: 512
+      Timeout: 900
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}CommunitiesApiFunction-${StageName}
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+            - Effect: Allow
+              Action:
+                - states:StartExecution
+              Resource:
+                - !Ref EndpointStateMachineArn
+            - Effect: Allow
+              Action:
+                - cloudformation:DescribeStacks
+              Resource: '*'
+      Environment:
+        Variables:
+          StackName: !Ref StackName
+          ENDPOINT_UPDATE_MACHINE_ARN: !Ref EndpointStateMachineArn
+      Events:
+        CommunitiesCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/communities/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        CommunitiesRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/communities/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        CommunitiesReadExternal:
+          Type: Api
+          Properties:
+            Path: /api/auth/external/communities/list/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCRMGatewayExternal
+        CommunitiesWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  CommunitiesApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CommunitiesApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  ActivitiesApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: activities.main
+      CodeUri: activities
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ActivitiesApiFunction-${StageName}
+      Environment:
+        Variables:
+          S3_BUCKET_ARN: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+          entitiesTableName: !Sub ${StackNamePrefix}entities-${StageName}-db
+          ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+          LAST_CONTACT_ARN: !GetAtt LastContactFunction.Arn
+          LAST_CONTACT_ID: !Ref LastContactFunction
+          CUSTOMER_LAMBDA_ARN: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${StackNamePrefix}${NestedStackPrefix}CustomersApiFunction-${StageName}
+          ES_REGION: !Ref AWS::Region
+          STACK_PREFIX: !Ref StackNamePrefix
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+                - es:ESHttpPut
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+            - Effect: Allow
+              Action:
+                - mobiletargeting:SendMessages
+              Resource: !Sub arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*
+            - Effect: Allow
+              Action:
+                - ses:SendEmail
+                - ses:SendRawEmail
+              Resource: !Sub arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/*
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+              Resource:
+                - !Sub ${FileManagerBucketARN}
+                - !Sub ${FileManagerBucketARN}/*
+            - Effect: Allow
+              Action:
+                - events:PutRule
+                - events:PutTargets
+                - events:DeleteRule
+                - events:RemoveTargets
+              Resource:
+                - !Sub arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/LastContact*
+      Events:
+        ActivitiesCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/activities/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        ActivitiesRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/activities/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        NotesExternal:
+          Type: Api
+          Properties:
+            Path: /api/auth/external/v2/{action}/{hbid}/{id}
+            Method: POST
+            RestApiId: !Ref HyphenCRMGatewayExternal
+        ActivitiesWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  ActivitiesApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ActivitiesApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  
+  LastContactFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: lastContact.main
+      CodeUri: lastcontact
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}LastContactFunction-${StageName}
+      Runtime: nodejs20.x
+      Environment:
+        Variables:
+          CUSTOMER_LAMBDA_ARN: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${StackNamePrefix}${NestedStackPrefix}CustomersApiFunction-${StageName}
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - events:DeleteRule
+                - events:RemoveTargets
+              Resource:
+                - !Sub arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/LastContact*
+  
+  LastContactEventsPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt LastContactFunction.Arn
+      Principal: events.amazonaws.com
+      SourceArn: !Sub arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/LastContact*
+
+  LastContactFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${LastContactFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  RealtorsApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: realtors.main
+      CodeUri: realtors
+      MemorySize: 512
+      Timeout: 900
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}RealtorsApiFunction-${StageName}
+      Environment:
+        Variables:
+          STACK_PREFIX: !Ref StackNamePrefix
+          ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+          ES_REGION: !Ref AWS::Region
+          FIREHOSE_ES_INDEX: !Ref firehoseESIndex
+          PINPOINT_ES_DATA: !Ref pinpointESData
+          DATA_MIGRAION_MACHINE_ARN: !Ref DataExportStateMachineArn
+          DELETE_REALTOR_FROM_CUSTOMER_STATEMACHINE_ARN: !GetAtt DRFCStateMachine.Arn
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - mobiletargeting:DeleteEndpoint
+              Resource: !Sub arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/endpoints/*
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+                - es:ESHttpPut
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+            - Effect: Allow
+              Action:
+                - states:StartExecution
+              Resource:
+                - !Ref DataExportStateMachineArn
+                - !GetAtt DRFCStateMachine.Arn
+      Events:
+        RealtorsCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/realtors/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        RealtorsRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/realtors/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        RealtorsWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  RealtorsApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${RealtorsApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  InitRealtorCountLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InitRealtorCountLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource: !Sub ${FileManagerBucketARN}/delete_realtor_from_customer/*
+              - Effect: Allow
+                Action:
+                  - es:ESHttpPost
+                  - es:ESHttpPut
+                Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+  InitRealtorCountLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}InitRealtorCountLambda-${StageName}
+      Handler: initRealtorCount.main
+      CodeUri: realtors/removeRealtorFromCustomers/initRealtorCount
+      Role: !GetAtt InitRealtorCountLambdaRole.Arn
+      Environment:
+        Variables:
+          FILE_MANAGER_BUCKET_NAME: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+  InitRemoveRealtorLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InitRemoveRealtorLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource: !Sub ${FileManagerBucketARN}/delete_realtor_from_customer/*
+              - Effect: Allow
+                Action:
+                  - es:ESHttpPost
+                  - es:ESHttpPut
+                Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+  InitRemoveRealtorLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}InitRemoveRealtorLambda-${StageName}
+      Handler: initRemoveRealtor.main
+      CodeUri: realtors/removeRealtorFromCustomers/intiRemoveRealtor
+      Role: !GetAtt InitRemoveRealtorLambdaRole.Arn
+      Environment:
+        Variables:
+          FILE_MANAGER_BUCKET_NAME: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+  ErrorLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: ErrorLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/delete_realtor_from_customer/*
+              - Effect: Allow
+                Action:
+                  - dynamodb:Query
+                  - dynamodb:PutItem
+                Resource:
+                  - !Ref DynamoDBArn
+                  - !Sub ${DynamoDBArn}/index/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+  ErrorLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ErrorLambda-${StageName}
+      Handler: error.main
+      CodeUri: realtors/removeRealtorFromCustomers/error
+      Role: !GetAtt ErrorLambdaRole.Arn
+      Environment:
+        Variables:
+          FILE_MANAGER_BUCKET_NAME: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+  IteratorLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+  IteratorLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}IteratorLambda-${StageName}
+      Handler: iterator.main
+      CodeUri: realtors/removeRealtorFromCustomers/iterator
+      Role: !GetAtt IteratorLambdaRole.Arn
+  DRFCCompletedLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: DRFCCompletedLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/delete_realtor_from_customer/*
+              - Effect: Allow
+                Action:
+                  - dynamodb:Query
+                  - dynamodb:PutItem
+                Resource:
+                  - !Ref DynamoDBArn
+                  - !Sub ${DynamoDBArn}/index/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+  DRFCCompletedLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}DRFCCompletedLambda-${StageName}
+      Handler: drfcCompleted.main
+      CodeUri: realtors/removeRealtorFromCustomers/drfcCompleted
+      Role: !GetAtt DRFCCompletedLambdaRole.Arn
+      Environment:
+        Variables:
+          FILE_MANAGER_BUCKET_NAME: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+  FetchDataLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: FetchDataLambdaRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/delete_realtor_from_customer/*
+              - Effect: Allow
+                Action:
+                  - es:ESHttpPost
+                  - es:ESHttpPut
+                Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+  FetchDataLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}FetchDataLambda-${StageName}
+      Handler: fetchData.main
+      CodeUri: realtors/removeRealtorFromCustomers/fetchData
+      Role: !GetAtt FetchDataLambdaRole.Arn
+      Environment:
+        Variables:
+          FILE_MANAGER_BUCKET_NAME: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+  RemoveRealtorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: RemoveRealtorRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/delete_realtor_from_customer/*
+              - Effect: Allow
+                Action:
+                  - es:ESHttpPost
+                  - es:ESHttpPut
+                Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+              - Effect: Allow
+                Action:
+                  - dynamodb:Query
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !Ref DynamoDBArn
+                  - !Sub ${DynamoDBArn}/index/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+  RemoveRealtorLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}RemoveRealtorLambda-${StageName}
+      Handler: deleteRealtor.main
+      CodeUri: realtors/removeRealtorFromCustomers/deleteRealtor
+      Role: !GetAtt RemoveRealtorRole.Arn
+      Environment:
+        Variables:
+          FILE_MANAGER_BUCKET_NAME: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+  AgenciesApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: agencies.main
+      CodeUri: agencies
+      MemorySize: 512
+      Timeout: 900
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}AgenciesApiFunction-${StageName}
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+                - es:ESHttpPut
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+            - Effect: Allow
+              Action:
+                - states:StartExecution
+              Resource:
+                - !Ref EndpointStateMachineArn
+            - Effect: Allow
+              Action:
+                - states:StartExecution
+              Resource:
+                - !Ref DeleteAgenciesInBulkStateMachineArn
+            - Effect: Allow
+              Action:
+                - cloudformation:DescribeStacks
+              Resource: '*'
+      Environment:
+        Variables:
+          STACK_PREFIX: !Ref StackNamePrefix
+          ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+          ES_REGION: !Ref AWS::Region
+          REALTOR_LAMBDA_ARN: !GetAtt RealtorsApiFunction.Arn
+          StackName: !Ref StackName
+          ENDPOINT_UPDATE_MACHINE_ARN: !Ref EndpointStateMachineArn
+          AGENCIES_BULK_DELETE_MACHINE_ARN: !Ref DeleteAgenciesInBulkStateMachineArn
+      Events:
+        AgenciesCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/agencies/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        AgenciesRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/agencies/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        AgenciesWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  AgenciesApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AgenciesApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  BrokersApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: brokers.main
+      CodeUri: brokers
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}BrokersApiFunction-${StageName}
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+      Events:
+        BrokersCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/brokers/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        BrokersRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/brokers/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        BrokersWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  BrokersApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${BrokersApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  MetrosApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: metros.main
+      CodeUri: metros
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}MetrosApiFunction-${StageName}
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      Events:
+        MetrosCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/metros/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        MetrosRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/metros/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        MetrosWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  MetrosApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${MetrosApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  SpecsApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: specialities.main
+      CodeUri: specialities
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}SpecsApiFunction-${StageName}
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      Events:
+        SpecsCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/specs/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        SpecsRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/specs/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        SpecsWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  SpecsApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${SpecsApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  SourceApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: source.main
+      CodeUri: source
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}SourceApiFunction-${StageName}
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      Events:
+        SourceCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/source/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        SourceRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/source/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        SourceReadExternal:
+          Type: Api
+          Properties:
+            Path: /api/auth/external/source/list/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCRMGatewayExternal
+        SourceWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  SourceApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${SourceApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  GradeApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: grade.main
+      CodeUri: grade
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}GradeApiFunction-${StageName}
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      Events:
+        GradeCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/grade/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        GradeRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/grade/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        GradeReadExternal:
+          Type: Api
+          Properties:
+            Path: /api/auth/external/grade/list/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCRMGatewayExternal
+        GradeWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  GradeApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GradeApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  DesiredFeatureApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: desiredFeatures.main
+      CodeUri: desiredFeatures
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}DesiredFeatureApiFunction-${StageName}
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+            - Effect: Allow
+              Action:
+                - states:StartExecution
+              Resource:
+                - !Ref DeleteProfileDataStateMachineArn
+      Events:
+        DesiredFeatureCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/desf/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        DesiredFeatureRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/desf/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        DesiredFeatureReadExternal:
+          Type: Api
+          Properties:
+            Path: /api/auth/external/desf/list/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCRMGatewayExternal
+        DesiredFeatureWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  DesiredFeatureApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${DesiredFeatureApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  InfluenceApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: influence.main
+      CodeUri: influence
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}InfluenceApiFunction-${StageName}
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      Events:
+        InfluenceCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/influence/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        InfluenceRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/influence/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        InfluenceReadExternal:
+          Type: Api
+          Properties:
+            Path: /api/auth/external/influence/list/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCRMGatewayExternal
+        InfluenceWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  InfluenceApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${InfluenceApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  ContactMethodApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: contactMethod.main
+      CodeUri: contactMethod
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ContactMethodApiFunction-${StageName}
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      Events:
+        ContactMethodCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/contactMethod/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        ContactMethodRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/contactMethod/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        ContactMethodReadExternal:
+          Type: Api
+          Properties:
+            Path: /api/auth/external/contactMethod/list/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCRMGatewayExternal
+        ContactMethodWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  ContactMethodApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ContactMethodApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  ExpApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: expertise.main
+      CodeUri: expertise
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ExpApiFunction-${StageName}
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      Events:
+        ExpCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/exp/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        ExpRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/exp/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        ExpWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  ExpApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ExpApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  SearchApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: search.main
+      CodeUri: search
+      MemorySize: 512
+      Timeout: 900
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}SearchApiFunction-${StageName}
+      Environment:
+        Variables:
+          ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+          ES_REGION: !Ref AWS::Region
+          FIREHOSE_ES_INDEX: !Ref firehoseESIndex
+          PINPOINT_ES_DATA: !Ref pinpointESData
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+                - es:ESHttpPut
+                - es:ESHttpDelete
+                - es:ESHttpGet
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      Events:
+        SearchEntities:
+          Type: Api
+          Properties:
+            Path: /api/auth/search/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        ValidateEntitiesPublic:
+          Type: Api
+          Properties:
+            Path: /api/public/search/validate
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+            Auth:
+              Authorizer: NONE
+        SearchWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  SearchApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${SearchApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  ReportsApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: reports.main
+      CodeUri: reports
+      MemorySize: 512
+      Timeout: 900
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ReportsApiFunction-${StageName}
+      Environment:
+        Variables:
+          ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+          ES_REGION: !Ref AWS::Region
+          FIREHOSE_ES_INDEX: !Ref firehoseESIndex
+          PINPOINT_ES_DATA: !Ref pinpointESData
+          REPORTS_STATE_MACHINE_ARN: !Ref ReportsStateMachineArn
+          COMMUNITIES_LAMBDA_ARN: !GetAtt CommunitiesApiFunction.Arn
+          StackName: !Ref StackName
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+                - es:ESHttpPut
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+            - Effect: Allow
+              Action:
+                - states:StartExecution
+              Resource:
+                - !Ref ReportsStateMachineArn
+            - Effect: Allow
+              Action:
+                - cloudformation:DescribeStacks
+              Resource: '*'
+      Events:
+        ReportsAPI:
+          Type: Api
+          Properties:
+            Path: /api/auth/reports/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        ReportsWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  ReportsApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ReportsApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  AdminApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: admin.main
+      CodeUri: admin
+      MemorySize: 512
+      Timeout: 900
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}AdminApiFunction-${StageName}
+      Environment:
+        Variables:
+          STACK_PREFIX: !Ref StackNamePrefix
+          USER_POOL_ID: !Ref CognitoUserPool
+          ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+          ES_REGION: !Ref AWS::Region
+          FIREHOSE_ES_INDEX: !Ref firehoseESIndex
+          PINPOINT_ES_DATA: !Ref pinpointESData
+          PUBLIC_CONFIG: /CRM/CustomerData/PublicConfig
+          SSL_CERT_ARN: /CRM/Application/SSLCertARN
+          LOG_BUCKET: /CRM/Messaging/LogBucket
+          API_SSL_CERT_ARN: /CRM/Application/APISSLCertARN
+          EN_DCRYPT_KEY_ARN: /CRM/Application/EnDCryptKeyARN
+          CUSTOMER_IMPORT_STATE_MACHINE_ARN: !Ref LeadAPIStateMachineArn
+          S3_BUCKET_ARN: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+          PROJECT_NAME: !Ref StackName
+          REALTOR_LAMBDA_ARN: !GetAtt RealtorsApiFunction.Arn
+          COMMUNITIES_LAMBDA_ARN: !GetAtt CommunitiesApiFunction.Arn
+          AGENCIES_LAMBDA_ARN: !GetAtt AgenciesApiFunction.Arn
+          METROS_LAMBDA_ARN: !GetAtt MetrosApiFunction.Arn
+          USERS_LAMBDA_ARN: !GetAtt UsersApiFunction.Arn
+          EXPERTISE_LAMBDA_ARN: !GetAtt ExpApiFunction.Arn
+          SPECIALTY_LAMBDA_ARN: !GetAtt SpecsApiFunction.Arn
+          GRADE_LAMBDA_ARN: !GetAtt GradeApiFunction.Arn
+          DESIRED_FEATURES_LAMBDA_ARN: !GetAtt DesiredFeatureApiFunction.Arn
+          SOURCE_LAMBDA_ARN: !GetAtt SourceApiFunction.Arn
+          INFLUENCE_LAMBDA_ARN: !GetAtt InfluenceApiFunction.Arn
+          CONTACT_METHOD_LAMBDA_ARN: !GetAtt ContactMethodApiFunction.Arn
+          CAMPAIGN_LAMBDA_ARN: !GetAtt CampaignApiFunction.Arn
+          DEMOGRAPHICS_LAMBDA_ARN: !GetAtt QstnApiFunction.Arn
+          MOVE_IN_TIME_FRAME_LAMBDA_ARN: !GetAtt MoveInTimeFrameApiFunction.Arn
+          DYNAMIC_REQUIRED_FIELDS_ARN: !GetAtt DynamicRequiredFieldApiFunction.Arn
+          DELETE_REALTOR_FROM_CUSTOMER_STATEMACHINE_ARN: !GetAtt DRFCStateMachine.Arn
+          ENDPOINT_UPDATE_MACHINE_ARN: !Ref EndpointStateMachineArn
+          DELETE_PROFILE_DATA_STATE_MACHINE_ARN: !Ref DeleteProfileDataStateMachineArn
+          StackName: !Ref StackName
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:*
+              Resource: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPool}
+            - Effect: Allow
+              Action:
+                - ses:VerifyEmailIdentity
+                - ses:GetIdentityVerificationAttributes
+                - ses:SendCustomVerificationEmail
+                - ses:GetCustomVerificationEmailTemplate
+                - ses:CreateCustomVerificationEmailTemplate
+                - ses:UpdateCustomVerificationEmailTemplate
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - mobiletargeting:DeleteEndpoint
+              Resource: !Sub arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/endpoints/*
+            - Effect: Allow
+              Action:
+                - mobiletargeting:ListTemplates
+              Resource: !Sub arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:templates
+            - Effect: Allow
+              Action:
+                - mobiletargeting:CreateEmailTemplate
+                - mobiletargeting:DeleteEmailTemplate
+                - mobiletargeting:GetEmailTemplate
+                - mobiletargeting:UpdateEmailTemplate
+                - mobiletargeting:TagResource
+              Resource:
+                - !Sub arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:templates/*/email
+                - !Sub arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:templates/*/EMAIL
+            - Effect: Allow
+              Action:
+                - mobiletargeting:GetSegments
+              Resource: !Sub arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*
+            - Effect: Allow
+              Action:
+                - mobiletargeting:TagResource
+                - mobiletargeting:UpdateSegment
+              Resource: !Sub arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/segments/*
+            - Effect: Allow
+              Action:
+                - mobiletargeting:RemoveAttributes
+              Resource: !Sub arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/attributes/*
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+                - ssm:PutParameter
+              Resource:
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/CRM/CustomerData/PublicConfig
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/CRM/Application/SSLCertARN
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/CRM/Application/APISSLCertARN
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/CRM/Messaging/LogBucket
+                - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/CRM/Application/EnDCryptKeyARN
+            - Effect: Allow
+              Action:
+                - ssm:DescribeParameters
+              Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:*
+            - Effect: Allow
+              Action:
+                - cloudformation:DescribeStacks
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - states:ListExecutions
+              Resource: !Ref LeadAPIStateMachineArn
+            - Effect: Allow
+              Action:
+                - states:DescribeExecution
+              Resource: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:*:*
+            - Effect: Allow
+              Action:
+                - s3:ListBucket
+                - s3:GetObject
+              Resource:
+                - !Sub ${FileManagerBucketARN}
+                - !Sub ${FileManagerBucketARN}/*
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+                - es:ESHttpPut
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+            - Effect: Allow
+              Action:
+                - states:StartExecution
+              Resource:
+                - !GetAtt DRFCStateMachine.Arn
+                - !Ref EndpointStateMachineArn
+                - !Ref DeleteProfileDataStateMachineArn
+      Events:
+        AdminCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/admin/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        AdminRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/admin/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        AdminWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  AdminApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AdminApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  QstnApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: qstn.main
+      CodeUri: qstn
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}QstnApiFunction-${StageName}
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      Events:
+        QstnCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/qstn/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        QstnRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/qstn/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        QstnReadExternal:
+          Type: Api
+          Properties:
+            Path: /api/auth/external/qstn/list/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCRMGatewayExternal
+  QstnApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${QstnApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  FileManagerApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      MemorySize: 512
+      Timeout: 180
+      Handler: filemanager.main
+      CodeUri: filemanager
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}FileManagerApiFunction-${StageName}
+      Environment:
+        Variables:
+          S3_BUCKET_ARN: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+          S3_BUCKET_REG_DOMAIN: !Ref FileManagerRegionalDomainName
+          BULK_CUSTOMER_CREATE_LAMBDA_ARN: !GetAtt BulkCustomerCreateFunction.Arn
+          BULK_REALTOR_CREATE_LAMBDA_ARN: !GetAtt BulkRealtorCreateFunction.Arn
+          BULK_AGENCY_CREATE_LAMBDA_ARN: !GetAtt BulkAgencyCreateFunction.Arn
+          CUSTOMER_IMPORT_MACHINE_ARN: !Ref CustomerImportStateMachineArn
+          NOTES_IMPORT_MACHINE_ARN: !Ref NoteImportStateMachineArn
+          COBUYERS_IMPORT_MACHINE_ARN: !Ref CobuyerImportStateMachineArn
+          REALTORS_IMPORT_MACHINE_ARN: !Ref RealtorImportStateMachineArn
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:ListBucket
+                - s3:DeleteObject
+                - s3:GetObject
+                - s3:PutObjectAcl
+              Resource:
+                - !Sub ${FileManagerBucketARN}
+                - !Sub ${FileManagerBucketARN}/*
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource:
+                - !GetAtt BulkCustomerCreateFunction.Arn
+                - !GetAtt BulkRealtorCreateFunction.Arn
+            - Effect: Allow
+              Action:
+                - states:StartExecution
+              Resource:
+                - !Ref CustomerImportStateMachineArn
+                - !Ref NoteImportStateMachineArn
+                - !Ref CobuyerImportStateMachineArn
+                - !Ref RealtorImportStateMachineArn
+      Events:
+        FileManagerCRUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/filemanager/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        FileManagerUpload:
+          Type: Api
+          Properties:
+            Path: /api/auth/filemanager/upload/{hbid}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        FileManagerWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  FileManagerApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${FileManagerApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  ElasticSearchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: elastic.main
+      CodeUri: elastic
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ElasticSearchFunction-${StageName}
+      Role: !Ref ElasticRoleARN
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt ElasticFailDLQ.Arn
+      Environment:
+        Variables:
+          ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+          ES_REGION: !Ref AWS::Region
+          SERVICE_ENDPOINT: !Sub https://${HyphenCrmServerless}.execute-api.${AWS::Region}.amazonaws.com/${StageName}
+          STACKNAME_PREFIX: !Ref StackNamePrefix
+          DLQ_QUEUE_URL: !Sub https://sqs.${AWS::Region}.amazonaws.com/${AWS::AccountId}/${ElasticFailDLQ.QueueName}
+          SOCKET_POST_ENDPOINT: !Ref HyphenCRMWebSocketsGatewayPOSTEndpoint
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - iam:GetRole
+              Resource: '*'
+      Events:
+        DBStreamES:
+          Type: DynamoDB
+          Properties:
+            Stream: !Ref DynamoDBStreamARN
+            StartingPosition: LATEST
+            BatchSize: 1
+        ElasticWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  ElasticSearchFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ElasticSearchFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  ElasticFailDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${StackNamePrefix}ElasticFailDLQ-${StageName}-sqs
+      MessageRetentionPeriod: 1209600
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: sqs
+  CampaignApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: campaign.main
+      CodeUri: campaign
+      Role: !Ref CampaignRoleARN
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}CampaignApiFunction-${StageName}
+      Environment:
+        Variables:
+          REGION: !Ref AWS::Region
+          ACCOUNT_ID: !Ref AWS::AccountId
+          SEGMENT_HOOK_LAMBDA_ARN: !GetAtt DynamicSegmentsFunction.Arn
+          JOURNEY_CUSTOM_EMAIL_LAMBDA_ARN: !GetAtt JourneyCustomEmailFunction.Arn
+          JOURNEY_CUSTOM_TASK_LAMBDA_ARN: !GetAtt JourneyCustomTaskFunction.Arn
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - ses:VerifyEmailIdentity
+                - ses:GetIdentityVerificationAttributes
+                - ses:SendCustomVerificationEmail
+                - ses:GetCustomVerificationEmailTemplate
+                - ses:CreateCustomVerificationEmailTemplate
+                - ses:UpdateCustomVerificationEmailTemplate
+              Resource: '*'
+      Events:
+        CampaignCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/campaigns/{type}/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        CampaignRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/campaigns/{type}/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        CampaignWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+        EndpointUnSubscribe:
+          Type: Api
+          Properties:
+            Path: /api/public/campaigns/endpoint/unsubscribe/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+            Auth:
+              Authorizer: NONE
+        EndpointSubscribe:
+          Type: Api
+          Properties:
+            Path: /api/public/campaigns/endpoint/subscribe/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+            Auth:
+              Authorizer: NONE
+  CampaignApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CampaignApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  DynamicSegmentsFunctionPolicy:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt DynamicSegmentsFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: pinpoint.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/campaigns/*
+  DynamicSegmentsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: dynamicsegments.main
+      CodeUri: dynamicsegments
+      MemorySize: 1024
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}DynamicSegmentsFunction-${StageName}
+      Environment:
+        Variables:
+          BUILDER_LAMBDA_ARN: !GetAtt BuildersApiFunction.Arn
+          SEARCH_LAMBDA_ARN: !GetAtt SearchApiFunction.Arn
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: !GetAtt BuildersApiFunction.Arn
+            - Effect: Allow
+              Action:
+                - mobiletargeting:GetCampaign
+              Resource: !Sub arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*
+  DynamicSegmentsFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${DynamicSegmentsFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  JourneyCustomEmailFunctionPolicy:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt JourneyCustomEmailFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: pinpoint.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/journeys/*
+  JourneyCustomEmailFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: journeycustomemail.main
+      CodeUri: journeycustomemail
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}JourneyCustomEmailFunction-${StageName}
+      MemorySize: 1024
+      Environment:
+        Variables:
+          BUILDER_LAMBDA_ARN: !GetAtt BuildersApiFunction.Arn
+          SEARCH_LAMBDA_ARN: !GetAtt SearchApiFunction.Arn
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource:
+                - !GetAtt BuildersApiFunction.Arn
+                - !GetAtt SearchApiFunction.Arn
+            - Effect: Allow
+              Action:
+                - mobiletargeting:GetJourney
+              Resource: !Sub arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*
+            - Effect: Allow
+              Action:
+                - mobiletargeting:SendMessages
+              Resource: !Sub arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*
+  JourneyCustomEmailFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${JourneyCustomEmailFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  JourneyCustomTaskFunctionPolicy:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt JourneyCustomTaskFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: pinpoint.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/journeys/*
+  JourneyCustomTaskFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: journeycustomtask.main
+      CodeUri: journeycustomtask
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}JourneyCustomTaskFunction-${StageName}
+      MemorySize: 1024
+      Environment:
+        Variables:
+          ACTIVITIES_LAMBDA_ARN: !GetAtt ActivitiesApiFunction.Arn
+          StackName: !Ref StackName
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: !GetAtt ActivitiesApiFunction.Arn
+            - Effect: Allow
+              Action:
+                - mobiletargeting:GetEmailTemplate
+              Resource:
+                - !Sub arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:templates/*/email
+                - !Sub arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:templates/*/EMAIL
+            - Effect: Allow
+              Action:
+                - cloudformation:DescribeStacks
+              Resource: '*'
+  JourneyCustomTaskFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${JourneyCustomTaskFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  ExportListDataApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Environment:
+        Variables:
+          S3_BUCKET_ARN: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+          ADMIN_API_LAMBDA_ARN: !GetAtt AdminApiFunction.Arn
+          StackName: !Ref StackName
+          ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+          ES_REGION: !Ref AWS::Region
+      Handler: exportlistdata.main
+      CodeUri: exportlistdata
+      FunctionName: !Sub ${StackNamePrefix}ExportListDataApiFunction-${StageName}
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:ListBucket
+                - s3:DeleteObject
+                - s3:GetObject
+                - s3:PutObjectAcl
+              Resource:
+                - !Sub ${FileManagerBucketARN}
+                - !Sub ${FileManagerBucketARN}/*
+            - Effect: Allow
+              Action:
+                - cloudformation:DescribeStacks
+                - cloudfront:CreateInvalidation
+              Resource: '*'
+      Events:
+        ExportListDataCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/exportlistdata
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        ExportListDataWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  ExportListDataApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ExportListDataApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  CognitoVEmailApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: cognitoverifyemail.main
+      CodeUri: cognitoverifyemail
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}CognitoVEmailApiFunction-${StageName}
+      Environment:
+        Variables:
+          IsEnableCustomDomain: !Ref IsEnableCustomDomain
+          StackName: !Ref StackName
+          DomainName: !Ref DomainName
+          DYNAMODB_KMS_KEY_ID: !Ref EnDCryptKeyARN
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - kms:Encrypt
+                - kms:Decrypt
+              Resource: !Ref EnDCryptKeyARN
+      Events:
+        VEmailCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/userEmailVerification
+            Method: GET
+            RestApiId: !Ref HyphenCRMGatewayExternal
+            Auth:
+              Authorizer: NONE
+        WarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  CognitoVEmailApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CognitoVEmailApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  CntryCtyStApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: countrystatecity.main
+      CodeUri: countrystatecity
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}CntryCtyStApiFunction-${StageName}
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+      Events:
+        CntryCtyStRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/countrystatecity/{action}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        CntryCtyStWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  CntryCtyStApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CntryCtyStApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  HyphenCrmServerless:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref StageName
+      BinaryMediaTypes:
+        - multipart~1form-data
+      EndpointConfiguration: REGIONAL
+      Cors:
+        AllowMethods: '''GET,POST'''
+        AllowHeaders: '''Content-Type,X-Amz-Date,Authorization,X-Api-KeyContent-Type,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'''
+        AllowOrigin: '''*'''
+      Auth:
+        DefaultAuthorizer: CrmCognitoAuthorizer
+        AddDefaultAuthorizerToCorsPreflight: false
+        Authorizers:
+          CrmCognitoAuthorizer:
+            UserPoolArn: !Ref CognitoUserPoolARN
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: apigateway
+  HyphenCRMGatewayExternal:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref StageName
+      EndpointConfiguration: REGIONAL
+      Cors:
+        AllowMethods: '''GET,POST'''
+        AllowHeaders: '''Content-Type,X-Amz-Date,Authorization,X-Api-KeyContent-Type,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'''
+        AllowOrigin: '''*'''
+      Auth:
+        DefaultAuthorizer: CrmCognitoAuthorizerExternal
+        AddDefaultAuthorizerToCorsPreflight: false
+        Authorizers:
+          CrmCognitoAuthorizerExternal:
+            UserPoolArn: !Ref CognitoUserPoolExtArn
+            AuthorizationScopes:
+              - openid
+      Tags:
+        Environment: !Ref StageName
+        Application: !Ref ApplicationTag
+        Owner: !Ref OwnerTag
+        Purpose: !Ref PurposeTag
+        Service: apigateway
+  CRMAPIGatewayCustomDomain:
+    Condition: EnableCustomDomain
+    Type: AWS::ApiGateway::DomainName
+    Properties:
+      DomainName: !Ref APIDomainName
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      RegionalCertificateArn: !Ref APISSLCertARN
+      SecurityPolicy: TLS_1_2
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: apigateway
+  CRMAPIGatewayCustomDomainMapping:
+    Condition: EnableCustomDomain
+    Type: AWS::ApiGateway::BasePathMapping
+    Properties:
+      BasePath: !Ref StageName
+      DomainName: !Ref CRMAPIGatewayCustomDomain
+      RestApiId: !Ref HyphenCrmServerless
+      Stage: !Ref HyphenCrmServerless.Stage
+  CRMExternalAPIDomain:
+    Condition: EnableCustomDomain
+    Type: AWS::ApiGateway::DomainName
+    Properties:
+      DomainName: !Ref ExtAPIDomainName
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      RegionalCertificateArn: !Ref APISSLCertARN
+      SecurityPolicy: TLS_1_2
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: apigateway
+  CRMExternalAPIDomainMapping:
+    Condition: EnableCustomDomain
+    Type: AWS::ApiGateway::BasePathMapping
+    Properties:
+      BasePath: !Ref StageName
+      DomainName: !Ref CRMExternalAPIDomain
+      RestApiId: !Ref HyphenCRMGatewayExternal
+      Stage: !Ref HyphenCRMGatewayExternal.Stage
+  PlanApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: plan.main
+      CodeUri: plan
+      MemorySize: 512
+      Timeout: 900
+      FunctionName: !Sub ${StackNamePrefix}PlanApiFunction-${StageName}
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+                - es:ESHttpPut
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      Events:
+        planPOST:
+          Type: Api
+          Properties:
+            Path: /api/auth/plan/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        PlanGET:
+          Type: Api
+          Properties:
+            Path: /api/auth/plan/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        PlanWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  PlanApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${PlanApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  LotApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: lot.main
+      CodeUri: lot
+      MemorySize: 512
+      Timeout: 900
+      FunctionName: !Sub ${StackNamePrefix}LotApiFunction-${StageName}
+      Environment:
+        Variables:
+          STAGE_LAMBDA_ARN: !GetAtt StageApiFunction.Arn
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+                - es:ESHttpPut
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      Events:
+        LotPOST:
+          Type: Api
+          Properties:
+            Path: /api/auth/lot/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        LotGET:
+          Type: Api
+          Properties:
+            Path: /api/auth/lot/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        LotWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  LotApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${LotApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  StageApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: stage.main
+      CodeUri: stage
+      MemorySize: 512
+      Timeout: 900
+      FunctionName: !Sub ${StackNamePrefix}StageApiFunction-${StageName}
+      Environment:
+        Variables:
+          StackName: !Ref StackName
+          SESConfigSetName: !Ref SESConfigSetName
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+                - es:ESHttpPut
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+            - Effect: Allow
+              Action:
+                - cloudformation:DescribeStacks
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - ses:SendBulkTemplatedEmail
+              Resource: '*'
+      Events:
+        StagePOST:
+          Type: Api
+          Properties:
+            Path: /api/auth/stage/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        StageGET:
+          Type: Api
+          Properties:
+            Path: /api/auth/stage/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        StageWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  StageApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${StageApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  OutlookIntegrationActivityApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: outlookIntegrationActivity.main
+      CodeUri: outlookIntegration
+      MemorySize: 512
+      Timeout: 900
+      FunctionName: !Sub ${StackNamePrefix}OutlookIntegrationActivityFunction-${StageName}
+      Environment:
+        Variables:
+          StackName: !Ref StackName
+          S3_BUCKET_NAME: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+          ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+          ES_REGION: !Ref AWS::Region
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:DeleteItem
+                - dynamodb:DescribeStream
+                - dynamodb:GetRecords
+                - dynamodb:GetShardIterator
+                - dynamodb:ListStreams
+                - dynamodb:describeTable
+                - dynamodb:BatchGetItem
+              Resource:
+                - !Ref DynamoDBArn
+                - !Sub ${DynamoDBArn}/index/*
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+                - es:ESHttpPut
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+            - Effect: Allow
+              Action:
+                - cloudformation:DescribeStacks
+                - lambda:InvokeFunction
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:GetObject
+              Resource: arn:aws:s3:::poc-hyphen-crm-test-external-email-store/*
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:GetObject
+              Resource: !Sub arn:aws:s3:::${StackNamePrefix}frontend-${StageName}-s3/emails/*
+  OutlookIntegrationActivityApiFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt OutlookIntegrationActivityApiFunction.Arn
+      Principal: ses.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub arn:aws:ses:${AWS::Region}:${AWS::AccountId}:receipt-rule-set/${SESEmailRecievingRule}:receipt-rule/*
+  OutlookIntegrationActivityApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    DependsOn: OutlookIntegrationActivityApiFunction
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${OutlookIntegrationActivityApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  OutlookIntegrationRule:
+    Type: AWS::SES::ReceiptRule
+    DependsOn: OutlookIntegrationActivityApiFunction
+    Properties:
+      RuleSetName: !Ref SESEmailRecievingRule
+      Rule:
+        Name: !Sub ${StackNamePrefix}-outlook-integration-rule-${StageName}
+        Enabled: true
+        Recipients:
+          - !Ref ExternalEmailConfigDomain
+          - !Sub .${ExternalEmailConfigDomain}
+        Actions:
+          - S3Action:
+              BucketName: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+              ObjectKeyPrefix: emails/
+          - LambdaAction:
+              FunctionArn: !GetAtt OutlookIntegrationActivityApiFunction.Arn
+        ScanEnabled: true
+        TlsPolicy: Optional
+  OutlookIntegrationRequestApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: outlookIntegration.main
+      CodeUri: outlookIntegration
+      MemorySize: 512
+      Timeout: 900
+      FunctionName: !Sub ${StackNamePrefix}OutlookIntegrationRequestFunction-${StageName}
+      Environment:
+        Variables:
+          StackName: !Ref StackName
+          ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+          ES_REGION: !Ref AWS::Region
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:DeleteItem
+                - dynamodb:DescribeStream
+                - dynamodb:GetRecords
+                - dynamodb:GetShardIterator
+                - dynamodb:ListStreams
+                - dynamoDb:describeTable
+                - dynamodb:BatchGetItem
+              Resource:
+                - !Ref DynamoDBArn
+                - !Sub ${DynamoDBArn}/index/*
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+                - es:ESHttpPut
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+            - Effect: Allow
+              Action:
+                - cloudformation:DescribeStacks
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - ses:VerifyEmailIdentity
+                - ses:GetIdentityVerificationAttributes
+                - ses:GetIdentityDkimAttributes
+                - ses:VerifyDomainDkim
+                - ses:SetIdentityDkimEnabled
+                - ses:SendCustomVerificationEmail
+                - ses:GetCustomVerificationEmailTemplate
+                - ses:CreateCustomVerificationEmailTemplate
+                - ses:UpdateCustomVerificationEmailTemplate
+              Resource: '*'
+      Events:
+        OutlookIntegrationRequestPOST:
+          Type: Api
+          Properties:
+            Path: /api/auth/setExtEmail/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+  OutlookIntegrationApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${OutlookIntegrationRequestApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  GoalApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: goalSetting.main
+      CodeUri: goalSetting
+      MemorySize: 512
+      Timeout: 900
+      FunctionName: !Sub ${StackNamePrefix}GoalApiFunction-${StageName}
+      Environment:
+        Variables:
+          GOAL_LAMBDA_ARN: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${StackNamePrefix}GoalApiFunction-${StageName}
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+                - es:ESHttpPut
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${StackNamePrefix}GoalApiFunction-${StageName}
+      Events:
+        GoalPOST:
+          Type: Api
+          Properties:
+            Path: /api/auth/goal/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        GoalGET:
+          Type: Api
+          Properties:
+            Path: /api/auth/goal/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        GoalWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  GoalApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GoalApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  MoveInTimeFrameApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: moveInTimeFrame.main
+      CodeUri: moveInTimeFrame
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}MoveInTimeFrameApiFunction-${StageName}
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+            - Effect: Allow
+              Action:
+                - states:StartExecution
+              Resource:
+                - !Ref DeleteProfileDataStateMachineArn
+      Events:
+        MoveInTimeFrameCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/moveInTimeFrame/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        MoveInTimeFrameRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/moveInTimeFrame/{action}/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        MoveInTimeFrameReadExternal:
+          Type: Api
+          Properties:
+            Path: /api/auth/external/moveInTimeFrame/list/{hbid}/{id}
+            Method: GET
+            RestApiId: !Ref HyphenCRMGatewayExternal
+        MoveInTimeFrameWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  MoveInTimeFrameApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${MoveInTimeFrameApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  DynamicRequiredFieldApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: dynamicRequiredFields.main
+      CodeUri: dynamicRequiredFields
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}DynamicRequiredFieldApiFunction-${StageName}
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      Events:
+        DynamicRequiredFieldCUD:
+          Type: Api
+          Properties:
+            Path: /api/auth/dynamicRequiredField/{action}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        DynamicRequiredFieldRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/dynamicRequiredField/{action}/{hbid}/{type}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        DynamicRequiredFieldWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  DynamicRequiredFieldApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${DynamicRequiredFieldApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  TransferCustomersApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: transferCustomers.main
+      CodeUri: transferCustomers
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}TransferCustomersApiFunction-${StageName}
+      Policies:
+        - !Ref HyphenLambdaManagedPolicy
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpPost
+              Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      Events:
+        StartTransferRU:
+          Type: Api
+          Properties:
+            Path: /api/auth/transferCustomers/{action}/{hbid}
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        DynamicRequiredFieldWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  TransferCustomersApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${TransferCustomersApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  DRFCStateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - states.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: DRFCStatesExecutionPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt InitRemoveRealtorLambda.Arn
+                  - !GetAtt ErrorLambda.Arn
+                  - !GetAtt IteratorLambda.Arn
+                  - !GetAtt DRFCCompletedLambda.Arn
+                  - !GetAtt FetchDataLambda.Arn
+                  - !GetAtt RemoveRealtorLambda.Arn
+                  - !GetAtt InitRealtorCountLambda.Arn
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !Sub ${InitRemoveRealtorLambda.Arn}:*
+                  - !Sub ${ErrorLambda.Arn}:*
+                  - !Sub ${IteratorLambda.Arn}:*
+                  - !Sub ${DRFCCompletedLambda.Arn}:*
+                  - !Sub ${FetchDataLambda.Arn}:*
+                  - !Sub ${RemoveRealtorLambda.Arn}:*
+                  - !Sub ${InitRealtorCountLambda.Arn}:*
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogDelivery
+                  - logs:GetLogDelivery
+                  - logs:UpdateLogDelivery
+                  - logs:DeleteLogDelivery
+                  - logs:ListLogDeliveries
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeLogGroups
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                  - xray:GetSamplingRules
+                  - xray:GetSamplingTargets
+                Resource: '*'
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+  DRFCStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub ${StackNamePrefix}DRFCStateMachine-${StageName}
+      DefinitionString: !Sub
+        - |-
+          {
+            "Comment": "state machine for deleteing realtor from customer data when the realtor is deleted.",
+            "StartAt": "SetRealtorCount",
+            "States": {
+              "SetRealtorCount": {
+                "Type": "Pass",
+                "Result": -1,
+                "ResultPath": "$.realtorCount",
+                "Next": "InitRealtorCount"
+              },
+              "InitRealtorCount":{
+                "Type": "Task",
+                "Resource": "${InitRealtorCountLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "HasRealtorId?"
+              },
+              "HasRealtorId?":{
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.hasRealtor",
+                    "BooleanEquals": true,
+                    "Next": "InitRemoveRealtor"
+                  }
+                ],
+                "Default": "DRFCCompleted"
+              },
+              "InitRemoveRealtor": {
+                "Type": "Task",
+                "Resource": "${InitRemoveRealtorLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "hasValidCount?"
+              },
+              "hasValidCount?": {
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.status",
+                    "BooleanEquals": true,
+                    "Next": "SetIteratorCount"
+                  }
+                ],
+                "Default": "Error"
+              },
+              "SetIteratorCount": {
+                "Type": "Pass",
+                "Result": {
+                  "index": -1,
+                  "step": 2000,
+                  "nextIndexValue": null,
+                  "operation": "fetchData"
+                },
+                "ResultPath": "$.iterator",
+                "Next": "Iterator"
+              },
+              "Iterator": {
+                "Type": "Task",
+                "Resource": "${IteratorLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "ResultPath": "$.iterator",
+                "Next": "IsFetchData?"
+              },
+              "IsFetchData?": {
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.iterator.operation",
+                    "StringEquals": "fetchData",
+                    "Next": "IsCountReached?"
+                  },
+                  {
+                    "Variable": "$.iterator.operation",
+                    "StringEquals": "removeRealtor",
+                    "Next": "IsCountReachedRemoveRealtor?"
+                  }
+                ],
+                "Default": "Error"
+              },
+              "IsCountReachedRemoveRealtor?": {
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.iterator.continue",
+                    "BooleanEquals": true,
+                    "Next": "RemoveRealtor"
+                  }
+                ],
+                "Default": "InitRealtorCount"
+              },
+              "IsCountReached?": {
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.iterator.continue",
+                    "BooleanEquals": true,
+                    "Next": "FetchData"
+                  }
+                ],
+                "Default": "SetIteratorCount2"
+              },
+              "SetIteratorCount2": {
+                "Type": "Pass",
+                "Result": {
+                  "index": -1,
+                  "step": 2000,
+                  "nextIndexValue": null,
+                  "operation": "removeRealtor"
+                },
+                "ResultPath": "$.iterator",
+                "Next": "Iterator"
+              },
+              "FetchData": {
+                "Type": "Task",
+                "Resource": "${FetchDataLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "IsValidData?"
+              },
+              "IsValidData?": {
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.status",
+                    "BooleanEquals": true,
+                    "Next": "Iterator"
+                  }
+                ],
+                "Default": "Error"
+              },
+              "RemoveRealtor": {
+                "Type": "Task",
+                "Resource": "${RemoveRealtorLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "IsValidData?"
+              },
+              "DRFCCompleted": {
+                "Type": "Task",
+                "Resource": "${DRFCCompletedLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "EndProcess"
+              },
+              "Error": {
+                "Type": "Task",
+                "Resource": "${ErrorLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "InvalidRequest"
+              },
+              "InvalidRequest": {
+                "Type": "Fail",
+                "Cause": "Invalid request/Exception occured",
+                "Error": "Request contains invalid or missing values/Exception"
+              },
+              "EndProcess": {
+                "Type": "Pass",
+                "End": true
+              }
+            }
+          }
+        - InitRealtorCountLambdaARN: !GetAtt InitRealtorCountLambda.Arn
+          InitRemoveRealtorLambdaARN: !GetAtt InitRemoveRealtorLambda.Arn
+          ErrorLambdaARN: !GetAtt ErrorLambda.Arn
+          IteratorLambdaARN: !GetAtt IteratorLambda.Arn
+          DRFCCompletedLambdaARN: !GetAtt DRFCCompletedLambda.Arn
+          FetchDataLambdaARN: !GetAtt FetchDataLambda.Arn
+          RemoveRealtorLambdaARN: !GetAtt RemoveRealtorLambda.Arn
+      RoleArn: !GetAtt DRFCStateMachineRole.Arn
+      LoggingConfiguration:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt DRFCStateMachineLogGroup.Arn
+        IncludeExecutionData: true
+        Level: ALL
+      TracingConfiguration:
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: stepfunctions
+  DRFCStateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/vendedlogs/states/${StackNamePrefix}DRFCStateMachine-${StageName}
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+  NotificationApiFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+      Policies:
+        - PolicyName: NotificationApiFunctionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action:
+                  - es:ESHttpPost
+                  - es:ESHttpPut
+                Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+              - Effect: Allow
+                Action:
+                  - execute-api:ManageConnections
+                Resource:
+                  - !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*/POST/@connections/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+  NotificationApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: notification.main
+      CodeUri: notification
+      MemorySize: 512
+      Runtime: nodejs20.x
+      Timeout: 900
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}NotificationApiFunction-${StageName}
+      Environment:
+        Variables:
+          WEBSOCKET_URL: !Ref HyphenCRMWebSocketURL
+          WEBSOCKET_POST_URL: !Ref HyphenCRMWebSocketPostURL
+      Role: !GetAtt NotificationApiFunctionRole.Arn
+      Events:
+        NotificationRead:
+          Type: Api
+          Properties:
+            Path: /api/auth/notification/{action}/{hbid}/{agentid}
+            Method: GET
+            RestApiId: !Ref HyphenCrmServerless
+        NotificationCreate:
+          Type: Api
+          Properties:
+            Path: /api/auth/notification/{action}/
+            Method: POST
+            RestApiId: !Ref HyphenCrmServerless
+        NotificationWarmUpRule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  NotificationApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${NotificationApiFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+Outputs:
+  ServiceEndpoint:
+    Value: !Sub https://${HyphenCrmServerless}.execute-api.${AWS::Region}.amazonaws.com/${StageName}
+  ServiceEndpointExternal:
+    Value: !Sub https://${HyphenCRMGatewayExternal}.execute-api.${AWS::Region}.amazonaws.com/${StageName}
+  HyphenCRMGatewayExternal:
+    Value: !Ref HyphenCRMGatewayExternal
+  APICustomDomain:
+    Value: !Sub https://${APIDomainName}/${StageName}
+  ExtAPICustomDomain:
+    Value: !Sub https://${ExtAPIDomainName}/${StageName}
+  CRMAPIGatewayCustomDomain:
+    Condition: EnableCustomDomain
+    Value: !Ref CRMAPIGatewayCustomDomain
+  HyphenCrmServerless:
+    Description: HyphenCrmServerless
+    Value: !Ref HyphenCrmServerless
+    Export:
+      Name: !Sub ${AWS::StackName}-HyphenCrmServerless
+  CustomersApiFunctionArn:
+    Value: !GetAtt CustomersApiFunction.Arn
+  BuildersApiFunctionArn:
+    Value: !GetAtt BuildersApiFunction.Arn
+  AdminApiFunctionArn:
+    Value: !GetAtt AdminApiFunction.Arn
+  UsersApiFunctionArn:
+    Value: !GetAtt UsersApiFunction.Arn
+  SearchApiFunctionArn:
+    Value: !GetAtt SearchApiFunction.Arn
+  MetrosApiFunctionArn:
+    Value: !GetAtt MetrosApiFunction.Arn
+  ContactMethodApiFunctionArn:
+    Value: !GetAtt ContactMethodApiFunction.Arn
+  SourceApiFunctionArn:
+    Value: !GetAtt SourceApiFunction.Arn
+  InfluenceApiFunctionArn:
+    Value: !GetAtt InfluenceApiFunction.Arn
+  QstnApiFunctionArn:
+    Value: !GetAtt QstnApiFunction.Arn
+  GradeApiFunctionArn:
+    Value: !GetAtt GradeApiFunction.Arn
+  SpecsApiFunctionArn:
+    Value: !GetAtt SpecsApiFunction.Arn
+  ExpApiFunctionArn:
+    Value: !GetAtt ExpApiFunction.Arn
+  DesiredFeatureApiFunctionArn:
+    Value: !GetAtt DesiredFeatureApiFunction.Arn
+  CommunitiesApiFunctionArn:
+    Value: !GetAtt CommunitiesApiFunction.Arn
+  RealtorsApiFunctionArn:
+    Value: !GetAtt RealtorsApiFunction.Arn
+  CobuyersApiFunctionArn:
+    Value: !GetAtt CobuyersApiFunction.Arn
+  AgenciesApiFunctionArn:
+    Value: !GetAtt AgenciesApiFunction.Arn
+  BuildersApiFunctionRoleArn:
+    Value: !GetAtt BuildersApiFunctionRole.Arn
+  TokensApiFunctionRoleArn:
+    Value: !GetAtt TokensApiFunctionRole.Arn
+  BulkCustomerFailDLQArn:
+    Value: !GetAtt BulkCustomerFailDLQ.Arn
+  ActivitiesApiFunctionArn:
+    Value: !GetAtt ActivitiesApiFunction.Arn
+  CampaignApiFunctionArn:
+    Value: !GetAtt CampaignApiFunction.Arn
+  MoveInTimeFrameApiFunctionArn:
+    Value: !GetAtt MoveInTimeFrameApiFunction.Arn
+  DynamicRequiredFieldApiFunctionArn:
+    Value: !GetAtt DynamicRequiredFieldApiFunction.Arn
+  TransferCustomersApiFunction:
+    Value: !GetAtt TransferCustomersApiFunction.Arn

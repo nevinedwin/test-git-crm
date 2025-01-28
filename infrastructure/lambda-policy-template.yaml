@@ -1,0 +1,46 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: "Hyphen CRM SAM Template"
+
+Parameters:
+  DynamoDBArn:
+    Type: String
+
+Resources:
+  HyphenLambdaManagedPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Managed Policy for Hyphen Lambdas
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:Query
+              - dynamodb:Scan
+              - dynamodb:GetItem
+              - dynamodb:PutItem
+              - dynamodb:UpdateItem
+              - dynamodb:DeleteItem
+              - dynamodb:DescribeStream
+              - dynamodb:GetRecords
+              - dynamodb:GetShardIterator
+              - dynamodb:ListStreams
+              - dynamoDb:describeTable
+              - dynamodb:BatchGetItem
+              - dynamodb:BatchWriteItem
+            Resource:
+              - !Ref DynamoDBArn
+              - !Sub ${DynamoDBArn}/index/*
+          - Effect: Allow
+            Action:
+              - "lambda:InvokeFunction"
+              - "iam:GetRole"
+            Resource: "*"
+
+Outputs:
+  HyphenLambdaManagedPolicy:
+    Description: "HyphenLambdaManagedPolicy"
+    Value: !Ref HyphenLambdaManagedPolicy
+    Export:
+      Name: !Sub "${AWS::StackName}-HyphenLambdaManagedPolicy"

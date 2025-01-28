@@ -1,0 +1,58 @@
+pr: none
+trigger:
+  - master
+variables:
+  appName: aws-crm
+  envBucket: hyphen-dev-deployment-artifacts
+  scriptPath: $(Build.SourcesDirectory)/azure_pipeline/master/front_end
+  awsCreds: hyphen
+  awsRegion: us-west-2
+  azureRootDir: $(Build.SourcesDirectory)
+pool:
+  vmImage: "ubuntu-latest"
+stages:
+  - stage: BuildUpload
+    variables:
+      stagePath: $(scriptPath)/build_upload
+    jobs:
+      - job: BuildUpload
+        variables:
+          jobPath: $(stagePath)/build_upload
+        steps:
+          - checkout: self
+          - bash: chmod -R a+x+X azure_pipeline/
+            name: MakeFilesExecutable
+            failOnStderr: true
+          - bash: |
+              gitHash=$(git rev-parse HEAD)
+              echo "##vso[task.setvariable variable=gitHash]$gitHash"
+            name: GetGitDigest
+            failOnStderr: true
+          - task: NodeTool@0
+            inputs:
+              versionSpec: "16.13.1"
+          - task: AWSShellScript@1
+            name: ServiceChanged
+            inputs:
+              awsCredentials: $(awsCreds)
+              regionName: $(awsRegion)
+              filePath: $(jobPath)/service_changed.sh
+              failOnStderr: true
+            env:
+              azureRootDir: $(azureRootDir)
+              appName: $(appName)
+              envBucket: $(envBucket)
+              gitHash: $(gitHash)
+          - task: AWSShellScript@1
+            name: BuildFrontend
+            inputs:
+              awsCredentials: $(awsCreds)
+              regionName: $(awsRegion)
+              filePath: $(jobPath)/build_frontend.sh
+              failOnStderr: true
+            env:
+              azureRootDir: $(azureRootDir)
+              appName: $(appName)
+              envBucket: $(envBucket)
+              servicesUpdated: $(servicesUpdated)
+              gitHash: $(gitHash)

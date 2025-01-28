@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<WebElementEntity>
+   <description></description>
+   <name>input_editor_Text</name>
+   <tag></tag>
+   <elementGuidId>a9e35448-1819-4d05-9cb7-7bc70cfe97f6</elementGuidId>
+   <selectorCollection>
+      <entry>
+         <key>BASIC</key>
+         <value>//div[@role='textbox']</value>
+      </entry>
+      <entry>
+         <key>XPATH</key>
+         <value>//div[@role='textbox']</value>
+      </entry>
+   </selectorCollection>
+   <selectorMethod>BASIC</selectorMethod>
+   <useRalativeImagePath>false</useRalativeImagePath>
+   <webElementProperties>
+      <isSelected>true</isSelected>
+      <matchCondition>equals</matchCondition>
+      <name>xpath</name>
+      <type>Main</type>
+      <value>//div[@role='textbox']</value>
+   </webElementProperties>
+</WebElementEntity>

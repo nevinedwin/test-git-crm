@@ -1,0 +1,30 @@
+{
+  "name": "test-serverless",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "createbucket": "aws s3 mb s3://test-serv-fnc-backend-dev-s3 --region us-west-2 --profile hyphen",
+    "describestack": "aws cloudformation describe-stacks --stack-name test-serv-fnc-stack-dev-cf --region us-west-2 --profile hyphen",
+    "babel-compile": "babel src -d babel-compiled",
+    "preremoveFolders": "(cd ../dependencies/nodejs && npm install)",
+    "removeFolders": "rimraf .aws-sam .vscode ../.aws-sam ../.vscode",
+    "prewebpack-compile": "npm run removeFolders",
+    "webpack-compile": "webpack --config function.config.js",
+    "predeploy": "npm run webpack-compile",
+    "deploy": "sam package --template-file .aws-sam/build/template.yaml --s3-bucket test-serv-fnc-backend-dev-s3 --output-template-file .aws-sam/build/out.yaml  --profile hyphen",
+    "postdeploy": "sam deploy --template-file ./.aws-sam/build/out.yaml --region us-west-2 --capabilities CAPABILITY_NAMED_IAM --stack-name test-serv-fnc-stack-dev-cf --s3-bucket test-serv-fnc-backend-dev-s3 --profile hyphen"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@babel/cli": "^7.8.4",
+    "@babel/core": "^7.9.0",
+    "@babel/plugin-transform-runtime": "^7.9.0",
+    "@babel/preset-env": "^7.9.5",
+    "@babel/runtime": "^7.9.2",
+    "aws-sam-webpack-plugin": "^0.6.0",
+    "babel-loader": "^8.1.0",
+    "copy-webpack-plugin": "^5.1.1",
+    "webpack": "^4.42.1",
+    "webpack-cli": "^3.3.11"
+  }
+}

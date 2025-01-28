@@ -1,0 +1,33 @@
+aws iam create-role --role-name cf-deploy-aws-crm \
+    --path /hyphen/deployment/codepipeline/aws-crm/ \
+    --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"cloudformation.amazonaws.com"},"Action":"sts:AssumeRole"}]}'\
+    --profile krp-aws --region us-west-2
+
+    aws cloudformation deploy --template-file ./pipeline.yaml --stack-name crm-debug-pipeline --parameter-overrides ProjectName=crm-debug RootTemplate=root-template.yaml --capabilities CAPABILITY_IAM --profile hyphen --region us-west-2
+
+    aws iam create-policy --policy-name cf-deploy-aws-crm-managed-policy --policy-document file://policy1.json --profile hyphen --region us-west-2
+
+    aws iam attach-role-policy --policy-arn arn:aws:iam::748787612401:policy/cf-deploy-aws-crm-managed-policy --role-name cf-deploy-aws-crm --profile hyphen --region us-west-2
+
+    aws iam put-role-policy --role-name cf-deploy-aws-crm --policy-name cf-deploy-aws-crm-managed-policy  --policy-document file://policy1.json --profile hyphen --region us-west-2
+
+    aws iam get-role-policy --role-name cf-deploy-aws-crm --policy-name CloudFormationRolePolicy --profile hyphen --region us-west-2
+
+aws iam create-role --role-name crm-cfrole-dev-cp \
+    --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"cloudformation.amazonaws.com"},"Action":"sts:AssumeRole"}]}'\
+    --profile hyphen --region us-west-2
+
+
+    aws iam list-role-policies --role-name aws-crm-FirehoseRole-1PZ2GLET4POAR --profile hyphen --region us-west-2
+
+    aws iam delete-role-policy --role-name crm-cfrole-dev-cp --policy-name CloudFormationRolePolicy --profile hyphen --region us-west-2
+
+    aws iam delete-role --role-name crm-cfrole-dev-cp --profile hyphen --region us-west-2  
+
+    aws iam put-role-policy --role-name crm-uatbeta-cloudformationrole-uat-cf --policy-name CloudFormationRolePolicy --policy-document file://policy.json --profile hyphen --region us-west-2
+
+    aws iam detach-role-policy --role-name crm-dev-stack-dev-cf-Pinpoint-FirehosePinpointRole-20KSPI21OB3K --policy-arn arn:aws:iam::748787612401:policy/crm-dev-stack-dev-cf-PinpointRoleStack-PK3579J5MXSY-PinpointToFirehoseManagedPolicy-1HR9Y7ZRJGTFW --profile hyphen --region us-west-2
+
+    aws iam get-role-policy --role-name crm-cfrole-dev-cp --policy-name CloudFormationRolePolicy --profile hyphen --region us-west-2
+
+    aws iam delete-policy --policy-arn arn:aws:iam::748787612401:policy/crm-dkim-stack-dev-cf-PinpointRoleStack-ELDO9DHFNZPM-PinpointToFirehoseManagedPolicy-1LAJULDQ1EOF0 --profile hyphen --region us-west-2

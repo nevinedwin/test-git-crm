@@ -1,0 +1,158 @@
+{
+  "Comment": "State machine for calculating entity analytics",
+  "StartAt": "GetHomeBuilders",
+  "States": {
+    "GetHomeBuilders": {
+      "Type": "Task",
+      "Resource": "${builderLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "Next": "Continue?"
+    },
+    "Continue?": {
+      "Comment": "If the builder is valid with an id",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.isValidBuilder",
+          "BooleanEquals": true,
+          "Next": "SkipToGetEmailActivity?"
+        }
+      ],
+      "Default": "ExceptionOccured"
+    },
+    "SkipToGetEmailActivity?": {
+      "Comment": "Continue straight to GetEmailActivities Lambda.",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.skipToGetEmailActivity",
+          "BooleanEquals": true,
+          "Next": "GetEmailActivities"
+        }
+      ],
+      "Default": "SkipToEmailActivityUpdate?"
+    },
+    "SkipToEmailActivityUpdate?": {
+      "Comment": "Continue straight to GetEmailActivitiesIterator.",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.skipToEmailActivityUpdate",
+          "BooleanEquals": true,
+          "Next": "GetEmailActivitiesIterator"
+        }
+      ],
+      "Default": "ConfigureGetEmailActivitiesCount"
+    },
+    "ConfigureGetEmailActivitiesCount": {
+      "Type": "Pass",
+      "Result": {
+        "index": -1,
+        "step": 100
+      },
+      "ResultPath": "$.activityiterator",
+      "Next": "GetEmailActivitiesIterator"
+    },
+    "GetEmailActivitiesIterator": {
+      "Type": "Task",
+      "Resource": "${getEmailActivitiesIteratorLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "ResultPath": "$.activityiterator",
+      "Next": "IsActivitiesCountReached?"
+    },
+    "IsActivitiesCountReached?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.activityiterator.continue",
+          "BooleanEquals": true,
+          "Next": "GetEmailActivities"
+        }
+      ],
+      "Default": "ActivityUpdateComplete"
+    },
+    "GetEmailActivities": {
+      "Type": "Task",
+      "Resource": "${getEmailActivitiesLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "Next": "ContinueToUpdateActivity?"
+    },
+    "ContinueToUpdateActivity?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.continueToUpdateActivity",
+          "BooleanEquals": true,
+          "Next": "AreThereActivities?"
+        }
+      ],
+      "Default": "ActivityUpdateComplete"
+    },
+    "AreThereActivities?": {
+      "Comment": "Whether any email activities were found to update",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.isActivitiesFound",
+          "BooleanEquals": true,
+          "Next": "UpdateAllEmailActivities"
+        }
+      ],
+      "Default": "EndProcess"
+    },
+    "UpdateAllEmailActivities": {
+      "Type": "Map",
+      "ItemsPath": "$.activityList",
+      "Parameters": {
+        "list.$": "$$.Map.Item.Value"
+      },
+      "MaxConcurrency": 40,
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "ExceptionOccured"
+        }
+      ],
+      "Iterator": {
+        "StartAt": "UpdateEmailActivity",
+        "States": {
+          "UpdateEmailActivity": {
+            "Type": "Task",
+            "Resource": "${updateEmailActivityLambdaARN}",
+            "TimeoutSeconds": 86400,
+            "HeartbeatSeconds": 3600,
+            "End": true
+          }
+        }
+      },
+      "ResultPath": null,
+      "Next": "GetEmailActivitiesIterator"
+    },
+    "ActivityUpdateComplete": {
+      "Type": "Task",
+      "Resource": "${activityUpdateCompleteLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "Next": "EndProcess"
+    },
+    "ExceptionOccured": {
+      "Type": "Task",
+      "Resource": "${exceptionLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "Next": "InvalidRequest"
+    },
+    "InvalidRequest": {
+      "Type": "Fail",
+      "Cause": "Invalid request/Exception occured",
+      "Error": "Request contains invalid or missing values/Exception"
+    },
+    "EndProcess": {
+      "Type": "Pass",
+      "End": true
+    }
+  }
+}

@@ -1,0 +1,290 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: "Job to add connectionId row for all users under a builder"
+
+Parameters:
+  StageName:
+    Type: String
+  StackNamePrefix:
+    Type: String
+  AwsSdkLayer:
+    Type: String
+  DynamoDBArn:
+    Type: String
+  BuildersApiFunctionArn:
+    Type: String
+  AdminApiFunctionArn:
+    Type: String
+  UsersApiFunctionArn:
+    Type: String
+  ElasticsearchDomainEndpoint:
+    Type: String
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+  NestedStackPrefix:
+    Type: String
+    Default: "socketIdUpdate-" 
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 60
+    Layers:
+      - !Ref AwsSdkLayer
+    Environment:
+      Variables:
+        ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+        ES_REGION: !Ref AWS::Region
+    Tags:
+      Environment: !Ref StageName
+      Application: !Ref ApplicationTag
+      Owner: !Ref OwnerTag
+      Purpose: !Ref PurposeTag
+      Service: lambda
+
+Resources:
+  GetBuildersLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: GetBuildersLambdaRolePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "lambda:InvokeFunction"
+                Resource:
+                  - !Ref BuildersApiFunctionArn
+                  - !GetAtt GetUsersLambda.Arn
+              - Effect: Allow
+                Action:
+                  - "lambda:ListEventSourceMappings"
+                  - "lambda:UpdateEventSourceMapping"
+                Resource: "*"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  GetBuildersLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: getbuilders.main
+      CodeUri: getbuilders
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}GetBuildersLambda-${StageName}
+      Role: !GetAtt GetBuildersLambdaRole.Arn
+      Environment:
+        Variables:
+          BuildersApiFunctionArn: !Ref BuildersApiFunctionArn
+          GetUsersLambdaArn: !GetAtt GetUsersLambda.Arn
+          QueueHandlerFunction: !Ref QueueHandlerLambda
+          UsersQueueArn: !GetAtt UsersQueue.Arn
+
+  GetBuildersLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GetBuildersLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  GetUsersLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: GetUsersLambdaRolePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "lambda:InvokeFunction"
+                Resource:
+                  - !Ref AdminApiFunctionArn
+                  - !Ref UsersApiFunctionArn
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: !GetAtt UsersQueue.Arn
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  GetUsersLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: getusers.main
+      CodeUri: getusers
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}GetUsersLambda-${StageName}
+      Role: !GetAtt GetUsersLambdaRole.Arn
+      Environment:
+        Variables:
+          AdminApiFunctionArn: !Ref AdminApiFunctionArn
+          UsersApiFunctionArn: !Ref UsersApiFunctionArn
+          UsersQueueUrl: !Ref UsersQueue
+
+  GetUsersLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GetUsersLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  UsersQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${StackNamePrefix}UsersQueue-${StageName}-sqs
+      MessageRetentionPeriod: 300
+      VisibilityTimeout: 60
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: sqs
+
+  QueueHandlerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: QueueHandlerLambdaRolePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:BatchWriteItem
+                Resource:
+                  - !Ref DynamoDBArn
+                  - !Sub ${DynamoDBArn}/index/*
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt UsersQueue.Arn
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  QueueHandlerLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: queueHandler.main
+      CodeUri: queueHandler
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}QueueHandlerLambda-${StageName}
+      Role: !GetAtt QueueHandlerLambdaRole.Arn
+      Environment:
+        Variables:
+          UsersQueueUrl: !Ref UsersQueue
+          entitiesTableName: !Sub ${StackNamePrefix}entities-${StageName}-db
+      Events:
+        SQSTriger:
+          Type: SQS
+          Properties:
+            BatchSize: 1
+            Enabled: true
+            Queue: !GetAtt UsersQueue.Arn
+
+  QueueHandlerLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${QueueHandlerLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+Outputs:
+  SocketIdUpdateFunctionArn:
+    Value: !GetAtt GetBuildersLambda.Arn

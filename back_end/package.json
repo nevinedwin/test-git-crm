@@ -1,0 +1,47 @@
+{
+  "name": "hyphen-crm-serverless",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "createbucket": "aws s3 mb s3://crm-sync-backend-dev-s3 --region us-west-2 --profile hyphen",
+    "describestack": "aws cloudformation describe-stacks --stack-name crm-sync --region us-west-2 --profile hyphen",
+    "deletestack": "aws cloudformation delete-stack --stack-name crm-sync --profile hyphen --region us-west-2",
+    "postdeletestack": "aws s3 rm s3://crm-sync-backend-dev-s3 --recursive --profile hyphen --region us-west-2",
+    "removeFolders": "node removeFolders",
+    "prewebpack-compile": "npm run removeFolders",
+    "webpack-compile": "webpack --config services.config.js",
+    "copypackagejson": "node copypackagejson",
+    "predeploy": "npm run webpack-compile && npm run copypackagejson",
+    "deploy": "sam package --template-file ../infrastructure/root-template.yaml --s3-bucket test-serv-packaged-dev-s3 --output-template-file packaged.yaml --region us-west-2 --profile hyphen",
+    "postdeploy": "sam deploy --template-file ./packaged.yaml --region us-west-2 --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND --stack-name crm-sync --s3-bucket test-serv-packaged-dev-s3 --profile hyphen",
+    "prebuildLayer": "cd NPMLayer && npm i",
+    "buildLayer": "node createLambdaLayer",
+    "lint": "eslint /** --ext .js",
+    "lintfolder": "eslint --fix ./FunctionStack/validation/validation.js",
+    "format": "prettier -w ."
+  },
+  "dependencies": {
+    "@babel/core": "^7.14.3",
+    "@babel/preset-env": "^7.14.4",
+    "archiver": "^5.3.0",
+    "aws-jwt-verify": "^3.1.0",
+    "babel-loader": "^8.2.2",
+    "core-js": "^3.14.0",
+    "eslint-config-prettier": "^8.3.0",
+    "file-loader": "^6.2.0",
+    "ncp": "^2.0.0",
+    "regenerator-runtime": "^0.13.7",
+    "rimraf": "^3.0.2",
+    "sshpk": "^1.16.1",
+    "webpack": "^5.75.0",
+    "webpack-cli": "^5.0.1",
+    "xml2js": "^0.4.23",
+    "yaml-cfn": "^0.3.0"
+  },
+  "devDependencies": {
+    "eslint": "^7.31.0",
+    "eslint-config-airbnb-base": "^14.2.1",
+    "eslint-plugin-import": "^2.23.4",
+    "eslint-plugin-prettier": "^4.0.0"
+  }
+}

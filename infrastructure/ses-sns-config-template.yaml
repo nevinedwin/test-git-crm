@@ -1,0 +1,76 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: "Configuration Set for SES"
+
+Parameters:
+  StackNamePrefix:
+    Type: String
+  StageName:
+    Type: String
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+
+Conditions:
+  IsProd: !Equals [!Ref StageName, "prod"]
+
+Resources:
+  SESFailure:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub ${StackNamePrefix}SESFailure-${StageName}
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: sns
+
+  DebugSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: c-sraj2@ihyphen.com
+      Protocol: email
+      TopicArn: !Ref SESFailure
+
+  ProdSubscription:
+    Condition: IsProd
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: dforbes@ihyphen.com
+      Protocol: email
+      TopicArn: !Ref SESFailure
+      
+  ConfigSet:
+    Type: AWS::SES::ConfigurationSet
+    Properties:
+      Name: !Sub ${StackNamePrefix}rendering-failure-cs-${StageName}
+      ReputationOptions: 
+        ReputationMetricsEnabled: false
+       
+
+  CSEventDestination:
+    Type: AWS::SES::ConfigurationSetEventDestination
+    Properties:
+      ConfigurationSetName: !Ref ConfigSet
+      EventDestination:
+        Name: !Sub ${StackNamePrefix}ses-failure-${StageName}
+        Enabled: true
+        MatchingEventTypes:
+          - renderingFailure
+          - reject
+          - bounce
+        SnsDestination:
+           TopicARN: !Ref SESFailure
+
+Outputs:
+  SESConfigSetName:
+    Value: !Ref ConfigSet

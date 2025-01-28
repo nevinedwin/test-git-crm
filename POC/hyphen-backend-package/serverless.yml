@@ -1,0 +1,150 @@
+service: hyphen-crm-serverless
+# package:
+#   exclude:
+#     - node_modules/**
+custom:
+  stage: ${opt:stage, self:provider.stage}
+  entitiesTableName: ${self:custom.stage}-entities
+  entitiesTableByOrgId: ${self:custom.stage}-byOrgIdIndex
+  entitiesTableByType: ${self:custom.stage}-byTypeIndex
+  s3BucketName: hyphen-crm-${self:custom.stage}
+  # Set our DynamoDB throughput for prod and all other non-prod stages.
+  tableThroughputs:
+    prod: 1
+    default: 1
+  tableThroughput: ${self:custom.tableThroughputs.${self:custom.stage}, self:custom.tableThroughputs.default}
+  webpack:
+    webpackConfig: ./webpack.config.js
+    includeModules: true
+  dynamodb:
+    stages:
+      - dev
+    start:
+      port: 8008
+      migrate: true
+  # serverless-offline-dynamodb-streams:
+  #   apiVersion: '2013-12-02'
+  #   endpoint: http://0.0.0.0:8008
+  #   region: 
+    endpointType: REGIONAL
+  #   accessKeyId: root
+  #   secretAccessKey: root
+  #   skipCacheInvalidation: false
+  #   readInterval: 500
+plugins:
+  # - serverless-dynamodb-local
+  - serverless-webpack
+  # - serverless-pseudo-parameters
+  # - serverless-offline-dynamodb-streams
+  # - serverless-offline
+provider:
+  name: aws
+  runtime: nodejs10.x
+  stage: dev
+  region: us-east-1
+  endpointType: REGIONAL
+  environment:
+    entitiesTableName: ${self:custom.entitiesTableName}
+    entitiesTableByOrgId: ${self:custom.entitiesTableByOrgId}
+    entitiesTableByType: ${self:custom.entitiesTableByType}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:        
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+        - dynamodb:DescribeStream
+        - dynamodb:GetRecords
+        - dynamodb:GetShardIterator
+        - dynamodb:ListStreams
+      Resource:
+        - { "Fn::GetAtt": [ EntitiesTable, Arn ] }
+        - Fn::Join:
+          - "/"
+          -
+            - { "Fn::GetAtt": [ EntitiesTable, Arn ] }
+            - "index/*"
+    - Effect: Allow
+      Action:        
+        - es:ESHttpPost
+        - es:ESHttpPut
+      Resource: "*"
+functions:
+  api:
+    handler: api.main
+    events:
+      - http:
+          path: api/auth/{resource}/{action}
+          method: ANY
+          cors:
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+              - X-Amz-User-Agent
+            allowCredentials: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId:
+              Ref: ApiGatewayAuthorizer
+      - http:
+          path: api/public/{resource}/{action}
+          method: ANY
+          cors: true
+      - http:
+          path: api/auth/{resource}/{action}/{orgid}/{id}
+          method: ANY
+          cors:
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+              - X-Amz-User-Agent
+            allowCredentials: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId:
+              Ref: ApiGatewayAuthorizer
+    environment:
+      ES_ENDPOINT: !GetAtt ElasticsearchDomain.DomainEndpoint
+      ES_REGION: !Ref AWS::Region
+  elastic:
+    handler: elastic.main
+    events:
+      - stream:
+          enabled: true
+          type: dynamodb
+          tableName: EntitiesTable
+          batchSize: 1
+          startingPosition: LATEST
+          arn:
+            Fn::GetAtt:
+              - EntitiesTable
+              - StreamArn
+    role: !GetAtt ElasticRole.Arn
+    environment:
+      ES_ENDPOINT: !GetAtt ElasticsearchDomain.DomainEndpoint
+      ES_REGION: !Ref AWS::Region
+        
+                
+resources:
+  # API Gateway Errors
+  - ${file(resources/api-gateway-errors.yml)}
+  # DynamoDB
+  - ${file(resources/dynamodb-table.yml)}
+  # S3
+  - ${file(resources/s3-bucket.yml)}
+  # CloudFront
+  - ${file(resources/cloudfront.yml)}
+  # Elastic
+  - ${file(resources/elastic-search.yml)}
+  # Cognito
+  - ${file(resources/cognito-user-pool.yml)}
+  - ${file(resources/cognito-identity-pool.yml)}

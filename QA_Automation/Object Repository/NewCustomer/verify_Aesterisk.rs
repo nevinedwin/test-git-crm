@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<WebElementEntity>
+   <description></description>
+   <name>verify_Aesterisk</name>
+   <tag></tag>
+   <elementGuidId>d1d4a225-cb3a-4ce9-a846-a3061f47e8d3</elementGuidId>
+   <selectorCollection>
+      <entry>
+         <key>BASIC</key>
+         <value>//*[@id=&quot;root&quot;]//span[text()='*']/../../label[contains(text(),'${label}')]</value>
+      </entry>
+   </selectorCollection>
+   <selectorMethod>BASIC</selectorMethod>
+   <useRalativeImagePath>false</useRalativeImagePath>
+   <webElementProperties>
+      <isSelected>true</isSelected>
+      <matchCondition>equals</matchCondition>
+      <name>xpath</name>
+      <type>Main</type>
+      <value>//*[@id=&quot;root&quot;]//span[text()='*']/../../label[contains(text(),'${label}')]</value>
+   </webElementProperties>
+</WebElementEntity>

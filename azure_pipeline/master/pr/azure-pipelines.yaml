@@ -1,0 +1,40 @@
+pr:
+  branches:
+    include:
+      - master
+variables:
+  sharedPath: ./azure_pipeline/shared/tasks
+  awsCreds: hyphen
+  awsRegion: us-west-2
+  azureRootDir: $(Build.SourcesDirectory)
+  scriptPath: $(Build.SourcesDirectory)/azure_pipeline/master/pr
+pool:
+  vmImage: "ubuntu-latest"
+stages:
+  - stage: PullRequestTest
+    variables:
+      stagePath: $(scriptPath)/pull_request_test
+    jobs:
+      - job: PrTest
+        variables:
+          jobPath: $(stagePath)/pr_test
+        steps:
+          - checkout: self
+          - bash: chmod -R a+x+X azure_pipeline/
+            name: MakeFilesExecutable
+            failOnStderr: true
+          - bash: $(jobPath)/test_services.sh
+            name: TestServices
+            env:
+              azureRootDir: $(azureRootDir)
+            failOnStderr: true
+          - task: AWSShellScript@1
+            name: TestTemplates
+            inputs:
+              awsCredentials: $(awsCreds)
+              regionName: $(awsRegion)
+              scriptType: "filePath"
+              filePath: $(jobPath)/test_templates.sh
+              failOnStderr: true
+            env:
+              azureRootDir: $(azureRootDir)

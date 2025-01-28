@@ -1,0 +1,44 @@
+# The following commands will launch the Cloudformation stack and the corresponding
+# role that is required to manage the application pipeline. It is important that the
+# project name used be consistent in both, and that the role be created first.
+
+# The following command creates a role that can be assumed by CloudFormation
+# in order to create and update the stack defined in the code template.
+
+# This role is created outside of the stack created by the pipeline.yaml 
+# template file, however, the two work in tandem with one another.
+
+# The role is created outside of the stack since permissions that are
+# neccessary to launch each cloudformation stack may be different, and 
+# can be configured individually. 
+
+# In order for the stack to locate the role, the proper naming convention
+# must be followed. Replace <project-name> with the same value that is used for
+# the ProjectName parameter in the corresponding CloudFormation stack.
+
+aws iam create-role --role-name cf-deploy-<project-name> \
+    --path /hyphen/deployment/codepipeline/<project-name>/ \
+    --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"cloudformation.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
+
+# The following command will launch the CloudFormation stack that will create
+# the pipeline for the application stack.
+
+# The following command is assumed to be run in the same directory as the
+# pipeline.yaml file. If run from a different directory, the path in the
+# --template-file option must be changed.
+
+# The <project-name> placeholder must be changed to the name of the project
+# That the pipeline will deploy and manage. It is important that the same 
+# value used for the project name in the above command be used for the 
+# project name in the pipeline creation command below
+
+# The <root-template-file> placeholder must be changed to a string that
+# represents that path to the main cloudformation template in the
+# infrastructure directory of the project, e.g. if the main template
+# is located at infrastructure/main/template.yaml, this value would be set 
+# to main/template.yaml
+
+aws cloudformation deploy --template-file ./pipeline.yaml \
+    --stack-name <project-name>-pipeline \
+    --parameter-overrides ProjectName=<project-name> RootTemplate=<root-template-file>\
+    --capabilities CAPABILITY_IAM

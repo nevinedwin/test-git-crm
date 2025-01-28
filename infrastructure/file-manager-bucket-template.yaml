@@ -1,0 +1,105 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: "Hyphen CRM SAM Template"
+
+Parameters:
+  FileManagerS3Name:
+    Type: String
+  FileManagerCanonicalUserId:
+    Type: String
+  DomainName:
+    Type: String
+  IsEnableCustomDomain:
+    Type: String
+  StageName:
+    Type: String
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+Conditions:
+  EnableCustomDomain: !Equals [!Ref IsEnableCustomDomain, "true"]
+Resources:
+  # Specifying the S3 Bucket for File Manager
+  FileManagerBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref FileManagerS3Name
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - "*"
+            AllowedMethods:
+              - PUT
+              - POST
+            AllowedOrigins:
+              - !If [EnableCustomDomain, !Ref DomainName, "*"]
+            Id: !Sub ${FileManagerS3Name}-cors-rule
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: PinpointExportFileRule
+            Prefix: Exports
+            Status: Enabled
+            ExpirationInDays: 365
+            Transitions:
+              - TransitionInDays: 90
+                StorageClass: GLACIER
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: s3
+      VersioningConfiguration:
+        Status: Enabled
+  # Specifying the policies to make sure all files inside the Bucket are avaialble to CloudFront OAI
+  FileManagerBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket:
+        Ref: FileManagerBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              CanonicalUser: !Ref FileManagerCanonicalUserId
+            Action: s3:GetObject
+            Resource:
+              - !Sub "${FileManagerBucket.Arn}/*"
+          - Effect: Deny
+            Principal:
+              CanonicalUser: !Ref FileManagerCanonicalUserId
+            Action: s3:GetObject
+            Resource:
+              - !Sub "${FileManagerBucket.Arn}/endpoint_count/*"
+              - !Sub "${FileManagerBucket.Arn}/Exports/*"
+              - !Sub "${FileManagerBucket.Arn}/PinpointLogStream/*"
+Outputs:
+  FileManagerBucket:
+    Description: "FileManagerBucket"
+    Value: !Ref FileManagerBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-FileManagerBucket"
+  FileManagerBucketARN:
+    Description: "FileManagerBucketARN"
+    Value: !GetAtt FileManagerBucket.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-FileManagerBucketARN"
+  FileManagerBucketDomainName:
+    Description: "FileManagerBucketDomainName"
+    Value: !GetAtt FileManagerBucket.RegionalDomainName
+    Export:
+      Name: !Sub "${AWS::StackName}-FileManagerBucketDomainName"

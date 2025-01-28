@@ -1,0 +1,1248 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: "Endpoint Template"
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 900
+    MemorySize: 1024
+    Layers:
+      - !Ref AwsSdkLayer
+    Environment:
+      Variables:
+        entitiesTableName: !Sub ${StackNamePrefix}entities-${StageName}-db
+        entitiesTableByEntityAndId: !Sub ${StackNamePrefix}byEntityAndIdIndex-${StageName}-db
+        entitiesTableByDataAndEntity: !Sub ${StackNamePrefix}byDataAndEntityIndex-${StageName}-db
+        STACK_PREFIX: !Ref StackNamePrefix
+        ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+        ES_REGION: !Ref AWS::Region
+        FILE_MANAGER_BUCKET_NAME: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+        MACHINE_ARN: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${StackNamePrefix}EndpointStateMachine-${StageName}
+    Tags:
+      Environment: !Ref StageName
+      Application: !Ref ApplicationTag
+      Owner: !Ref OwnerTag
+      Purpose: !Ref PurposeTag
+      Service: lambda
+Parameters:
+  StageName:
+    Type: String
+  StackNamePrefix:
+    Type: String
+  AwsSdkLayer:
+    Type: String
+  HyphenLambdaManagedPolicy:
+    Type: String
+  ElasticsearchDomainEndpoint:
+    Type: String
+  ElasticsearchDomain:
+    Type: String
+  FileManagerBucketARN:
+    Type: String
+  StackName:
+    Type: String
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+  DynamoDBArn:
+    Type: String
+  NestedStackPrefix:
+    Type: String
+    Default: "updateEndpoint-" 
+
+Resources:
+  GetCustomerIteratorLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: GetCustomerIteratorLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - states:StartExecution
+                Resource: "*"
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  GetCustomerIteratorLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: getcustomeriterator.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}GetCustomerIteratorLambda-${StageName}
+      CodeUri: getcustomeriterator
+      Role: !GetAtt GetCustomerIteratorLambdaRole.Arn
+
+  GetCustomerIteratorLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GetCustomerIteratorLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  ExceptionLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: ExceptionLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ExceptionLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: exception.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ExceptionLambda-${StageName}
+      CodeUri: exception
+      Role: !GetAtt ExceptionLambdaRole.Arn
+
+  ExceptionLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ExceptionLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  EndpointCompleteLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: EndpointCompleteLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  EndpointCompleteLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: endpointcomplete.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}EndpointCompleteLambda-${StageName}
+      CodeUri: endpointcomplete
+      Role: !GetAtt EndpointCompleteLambdaRole.Arn
+
+  EndpointCompleteLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${EndpointCompleteLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  GetCustomersLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: GetCustomersLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  GetCustomersLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: getcustomers.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}GetCustomersLambda-${StageName}
+      CodeUri: getcustomers
+      Role: !GetAtt GetCustomersLambdaRole.Arn
+      MemorySize: 2048
+
+  GetCustomersLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GetCustomersLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  UpdateEndpointLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: UpdateEndpointLambdaRolePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - mobiletargeting:UpdateEndpoint
+                Resource: !Sub "arn:aws:mobiletargeting:${AWS::Region}:${AWS::AccountId}:apps/*/endpoints/*"
+              - Effect: Allow
+                Action:
+                  - es:ESHttpPost
+                  - es:ESHttpPut
+                Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  UpdateEndpointLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: updateendpoint.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}UpdateEndpointLambda-${StageName}
+      CodeUri: updateendpoint
+      Role: !GetAtt UpdateEndpointLambdaRole.Arn
+
+  UpdateEndpointLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${UpdateEndpointLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  GetHomeBuildersLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: GetHomeBuildersLambdaRolePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - execute-api:Invoke
+                Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+              - Effect: Allow
+                Action:
+                  - states:StartExecution
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                Resource: "*"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  GetHomeBuildersLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: getbuilders.main
+      CodeUri: getbuilders
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}GetHomeBuildersLambda-${StageName}
+      Role: !GetAtt GetHomeBuildersLambdaRole.Arn
+      Environment:
+        Variables:
+          StackName: !Ref StackName
+
+  GetHomeBuildersLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GetHomeBuildersLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  FetchEntitiesLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: FetchEntitiesLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "lambda:InvokeFunction"
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - es:ESHttpPost
+                  - es:ESHttpPut
+                Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  FetchEntitiesLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: fetchEntities.main
+      CodeUri: fetchEntities
+      MemorySize: 1024
+      Role: !GetAtt FetchEntitiesLambdaRole.Arn
+
+  FetchEntitiesLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${FetchEntitiesLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  EntityIteratorLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: GetEntityIteratorLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - states:StartExecution
+                Resource: "*"
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  EntityIteratorLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: entityIterator.main
+      CodeUri: entityIterator
+      MemorySize: 512
+      Role: !GetAtt EntityIteratorLambdaRole.Arn
+
+  EntityIteratorLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${EntityIteratorLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  PrepareCustomerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: PrepareCustomerLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  PrepareCustomerLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: prepareCustomer.main
+      CodeUri: prepareCustomer
+      MemorySize: 1024
+      Role: !GetAtt PrepareCustomerLambdaRole.Arn
+
+  PrepareCustomerLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${PrepareCustomerLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  UpdateRealtorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: UpdateRealtorRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+              - Effect: Allow
+                Action:
+                  - dynamodb:BatchWriteItem
+                Resource:
+                  - !Ref DynamoDBArn
+                  - !Sub ${DynamoDBArn}/index/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  UpdateRealtorLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: updateRealtor.main
+      CodeUri: updateRealtor
+      Role: !GetAtt UpdateRealtorRole.Arn
+
+  UpdateRealtorLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${UpdateRealtorLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  UpdateCustomerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: UpdateCustomerRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+              - Effect: Allow
+                Action:
+                  - dynamodb:BatchWriteItem
+                Resource:
+                  - !Ref DynamoDBArn
+                  - !Sub ${DynamoDBArn}/index/*
+              - Effect: Allow
+                Action:
+                  - "lambda:InvokeFunction"
+                Resource: "*"
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  UpdateCustomerLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: updateCustomer.main
+      CodeUri: updateCustomer
+      Role: !GetAtt UpdateCustomerRole.Arn
+
+  UpdateCustomerLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${UpdateCustomerLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  EndpointStatesExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - states.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: EndpointStatesExecutionPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt GetHomeBuildersLambda.Arn
+                  - !GetAtt GetCustomersLambda.Arn
+                  - !GetAtt ExceptionLambda.Arn
+                  - !GetAtt EndpointCompleteLambda.Arn
+                  - !GetAtt GetCustomerIteratorLambda.Arn
+                  - !GetAtt UpdateEndpointLambda.Arn
+                  - !GetAtt FetchEntitiesLambda.Arn
+                  - !GetAtt EntityIteratorLambda.Arn
+                  - !GetAtt PrepareCustomerLambda.Arn
+                  - !GetAtt UpdateCustomerLambda.Arn
+                  - !GetAtt UpdateRealtorLambda.Arn
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !Sub ${GetHomeBuildersLambda.Arn}:*
+                  - !Sub ${GetCustomersLambda.Arn}:*
+                  - !Sub ${ExceptionLambda.Arn}:*
+                  - !Sub ${EndpointCompleteLambda.Arn}:*
+                  - !Sub ${GetCustomerIteratorLambda.Arn}:*
+                  - !Sub ${UpdateEndpointLambda.Arn}:*
+                  - !Sub ${FetchEntitiesLambda.Arn}:*
+                  - !Sub ${EntityIteratorLambda.Arn}:*
+                  - !Sub ${PrepareCustomerLambda.Arn}:*
+                  - !Sub ${UpdateCustomerLambda.Arn}:*
+                  - !Sub ${UpdateRealtorLambda.Arn}:*
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogDelivery
+                  - logs:GetLogDelivery
+                  - logs:UpdateLogDelivery
+                  - logs:DeleteLogDelivery
+                  - logs:ListLogDeliveries
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeLogGroups
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                  - xray:GetSamplingRules
+                  - xray:GetSamplingTargets
+                Resource: "*"
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  EndpointStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub ${StackNamePrefix}EndpointStateMachine-${StageName}
+      DefinitionString: !Sub
+        - |-
+          {
+            "Comment": "State machine for updating the endpoint with new field",
+            "StartAt": "ChooseAction?",
+            "States": {
+              "ChooseAction?": {
+                "Comment": "Based on the purpose variable, this state machine performs different tasks",
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.purpose",
+                    "StringEquals": "metroUpdation",
+                    "Next": "FetchEntities"
+                  }
+                ],
+                "Default": "GetHomeBuilders"
+              },
+              "FetchEntities": {
+                "Type": "Task",
+                "Resource": "${FetchEntitiesLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "isEntityFetchSuccess?"
+              },
+              "isEntityFetchSuccess?":{
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.status",
+                    "BooleanEquals": true,
+                    "Next": "SkipToIterator?"
+                  }
+                ],
+                "Default": "ExceptionOccured"
+              },
+              "SkipToIterator?": {
+                "Comment": "Continue straight to EntityIterator.",
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "And": [
+                      {
+                        "Variable": "$.skipToIterator",
+                        "BooleanEquals": true
+                      },
+                      {
+                        "Variable": "$.type",
+                        "StringEquals": "customer"
+                      }
+                    ],
+                    "Next": "EntityIterator"
+                  }
+                ],
+                "Default": "SetIteratorCount"
+              },
+              "SetIteratorCount": {
+                "Type": "Pass",
+                "Result": {
+                  "index": -1
+                },
+                "ResultPath": "$.iterator",
+                "Next": "EntityIterator"
+              },
+              "EntityIterator": {
+                "Type": "Task",
+                "Resource": "${EntityIteratorLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "ResultPath": "$.iterator",
+                "Next": "IsCountReached?"
+              },
+              "IsCountReached?": {
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "And": [
+                      {
+                        "Variable": "$.iterator.continue",
+                        "BooleanEquals": true
+                      },
+                      {
+                        "Variable": "$.type",
+                        "StringEquals": "customer"
+                      }
+                    ],
+                    "Next": "PrepareCustomer"
+                  },
+                  {
+                    "And": [
+                      {
+                        "Variable": "$.iterator.continue",
+                        "BooleanEquals": true
+                      },
+                      {
+                        "Variable": "$.type",
+                        "StringEquals": "realtor"
+                      }
+                    ],
+                    "Next": "UpdateRealtor"
+                  }
+                ],
+                "Default": "EndpointComplete"
+              },
+              "PrepareCustomer": {
+                "Type": "Task",
+                "Resource": "${PrepareCustomerLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "UpdateCustomerEndpoints"
+              },
+              "UpdateCustomerEndpoints": {
+                "Type": "Map",
+                "ItemsPath": "$.customerList",
+                "Parameters": {
+                  "customer.$": "$$.Map.Item.Value",
+                  "idMappedValue.$": "$.idMappedValue",
+                  "coBuyerLambdaArn.$":"$.coBuyerLambdaArn"
+                },
+                "MaxConcurrency": 40,
+                "Catch": [
+                  {
+                    "ErrorEquals": ["States.ALL"],
+                    "Next": "ExceptionOccured"
+                  }
+                ],
+                "Iterator": {
+                  "StartAt": "UpdateCustomer",
+                  "States": {
+                    "UpdateCustomer": {
+                      "Type": "Task",
+                      "Resource": "${UpdateCustomerLambdaArn}",
+                      "TimeoutSeconds": 86400,
+                      "HeartbeatSeconds": 3600,
+                      "End": true
+                    }
+                  }
+                },
+                "ResultPath": null,
+                "Next": "EntityIterator"
+              },
+              "UpdateRealtor": {
+                "Type": "Task",
+                "Resource": "${UpdateRealtorLambdaArn}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "IsRealtorUpdateSuccess?"
+              },
+              "IsRealtorUpdateSuccess?": {
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.status",
+                    "BooleanEquals": true,
+                    "Next": "EntityIterator"
+                  }
+                ],
+                "Default": "ExceptionOccured"
+              },
+              "GetHomeBuilders": {
+                "Type": "Task",
+                "Resource": "${builderLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "Continue?"
+              },
+              "Continue?": {
+                "Comment": "If the builder is valid with an id",
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.isValidBuilder",
+                    "BooleanEquals": true,
+                    "Next": "SkipToGetCustomerIterator?"
+                  }
+                ],
+                "Default": "EndpointComplete"
+              },
+              "SkipToGetCustomerIterator?": {
+                "Comment": "Continue straight to GetCustomerIterator.",
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.skipToGetCustomerIterator",
+                    "BooleanEquals": true,
+                    "Next": "GetCustomerIterator"
+                  }
+                ],
+                "Default": "ConfigureGetCustomersCount"
+              },
+              "ConfigureGetCustomersCount": {
+                "Type": "Pass",
+                "Result": {
+                  "index": -1,
+                  "step": 200
+                },
+                "ResultPath": "$.getcustomeriterator",
+                "Next": "GetCustomerIterator"
+              },
+              "GetCustomerIterator": {
+                "Type": "Task",
+                "Resource": "${getCustomerIteratorLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "ResultPath": "$.getcustomeriterator",
+                "Next": "IsGetCustomerCountReached"
+              },
+              "IsGetCustomerCountReached": {
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.getcustomeriterator.continue",
+                    "BooleanEquals": true,
+                    "Next": "GetCustomers"
+                  }
+                ],
+                "Default": "EndpointComplete"
+              },
+              "GetCustomers": {
+                "Type": "Task",
+                "Resource": "${getCustomerLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "CustomersFound?"
+              },
+              "CustomersFound?": {
+                "Comment": "If there are customers under the builder",
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.isCustomersFound",
+                    "BooleanEquals": false,
+                    "Next": "EndpointComplete"
+                  }
+                ],
+                "Default": "UpdateAllEndpoints"
+              },
+              "UpdateAllEndpoints": {
+                "Type": "Map",
+                "ItemsPath": "$.customerList",
+                "Parameters": {
+                  "customer.$": "$$.Map.Item.Value",
+                  "optin.$": "$.optin"
+                },
+                "MaxConcurrency": 40,
+                "Catch": [
+                  {
+                    "ErrorEquals": ["States.ALL"],
+                    "Next": "ExceptionOccured"
+                  }
+                ],
+                "Iterator": {
+                  "StartAt": "UpdateEndpoint",
+                  "States": {
+                    "UpdateEndpoint": {
+                      "Type": "Task",
+                      "Resource": "${updateEndpointArn}",
+                      "TimeoutSeconds": 86400,
+                      "HeartbeatSeconds": 3600,
+                      "End": true
+                    }
+                  }
+                },
+                "ResultPath": null,
+                "Next": "GetCustomerIterator"
+              },
+              "EndpointComplete": {
+                "Type": "Task",
+                "Resource": "${endpointCompleteLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "EndProcess"
+              },
+              "ExceptionOccured": {
+                "Type": "Task",
+                "Resource": "${exceptionLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "InvalidRequest"
+              },
+              "InvalidRequest": {
+                "Type": "Fail",
+                "Cause": "Invalid request/Exception occured",
+                "Error": "Request contains invalid or missing values/Exception"
+              },
+              "EndProcess": {
+                "Type": "Pass",
+                "End": true
+              }
+            }
+          }
+
+
+        - {
+            builderLambdaARN: !GetAtt GetHomeBuildersLambda.Arn,
+            getCustomerLambdaARN: !GetAtt GetCustomersLambda.Arn,
+            exceptionLambdaARN: !GetAtt ExceptionLambda.Arn,
+            endpointCompleteLambdaARN: !GetAtt EndpointCompleteLambda.Arn,
+            getCustomerIteratorLambdaARN: !GetAtt GetCustomerIteratorLambda.Arn,
+            updateEndpointArn: !GetAtt UpdateEndpointLambda.Arn,
+            FetchEntitiesLambdaARN : !GetAtt FetchEntitiesLambda.Arn,
+            EntityIteratorLambdaARN : !GetAtt EntityIteratorLambda.Arn,
+            PrepareCustomerLambdaARN: !GetAtt PrepareCustomerLambda.Arn,
+            UpdateCustomerLambdaArn: !GetAtt UpdateCustomerLambda.Arn,
+            UpdateRealtorLambdaArn: !GetAtt UpdateRealtorLambda.Arn
+          }
+      RoleArn: !GetAtt EndpointStatesExecutionRole.Arn
+      LoggingConfiguration:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt EndpointStateMachineLogGroup.Arn
+        IncludeExecutionData: true
+        Level: ALL
+      TracingConfiguration:
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: stepfunctions
+
+  EndpointStateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/vendedlogs/states/${StackNamePrefix}Endpoint-${StageName}
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  # EndpointStateMachineRule:
+  #   Type: AWS::Events::Rule
+  #   Properties:
+  #     Description: EndpointStateMachineRule
+  #     ScheduleExpression: rate(120 minutes)
+  #     State: ENABLED
+  #     Targets:
+  #       - Arn: !GetAtt EndpointStateMachine.Arn
+  #         Id: EndpointStateMachineTarget
+  #         RoleArn: !GetAtt StateMachineStartExecutionRole.Arn
+
+  StateMachineStartExecutionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      # ManagedPolicyName: !Sub ${StackNamePrefix}state-machine-start-execution-policy-${StageName}
+      Roles:
+        - !Ref StateMachineStartExecutionRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - states:StartExecution
+            Resource:
+              - !Ref EndpointStateMachine
+          - Effect: Allow
+            Action:
+              - logs:CreateLogDelivery
+              - logs:GetLogDelivery
+              - logs:UpdateLogDelivery
+              - logs:DeleteLogDelivery
+              - logs:ListLogDeliveries
+              - logs:PutResourcePolicy
+              - logs:DescribeResourcePolicies
+              - logs:DescribeLogGroups
+            Resource: "*"
+
+  StateMachineStartExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      # RoleName: !Sub ${StackNamePrefix}state-machine-start-execution-role-${StageName}
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+Outputs:
+  EndpointStateMachineArn:
+    Value: !GetAtt EndpointStateMachine.Arn

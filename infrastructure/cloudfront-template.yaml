@@ -1,0 +1,222 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: "Hyphen CRM SAM Template"
+
+Parameters:
+  StageName:
+    Type: String
+  Alias:
+    Type: String
+  AssetsAlias:
+    Type: String
+  SSLCertARN:
+    Type: String
+  FrontEndBucketDomainName:
+    Type: String
+  CRMOriginAccessIdentity:
+    Type: String
+  HyphenCrmServerless:
+    Type: String
+  FileManagerOriginAccessIdentity:
+    Type: String
+  FileManagerRegionalDomainName:
+    Type: String
+  IsEnableCustomDomain:
+    Type: String
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+Conditions:
+  EnableCustomDomain: !Equals [!Ref IsEnableCustomDomain, "true"]
+Resources:
+  HyphenCRMDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+          - Id: "FrontEndBucketOrigin"
+            DomainName: !Ref FrontEndBucketDomainName
+            # S3OriginConfig: {}
+            ## In case you want to restrict the bucket access use S3OriginConfig and remove CustomOriginConfig
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${CRMOriginAccessIdentity}
+          - Id: !Sub Custom-${HyphenCrmServerless}.execute-api.${AWS::Region}.amazonaws.com/${StageName}
+            DomainName: !Sub ${HyphenCrmServerless}.execute-api.${AWS::Region}.amazonaws.com
+            OriginPath: !Sub /${StageName}
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols:
+                - TLSv1.2
+        Enabled: true
+        PriceClass: "PriceClass_All"
+        HttpVersion: "http2"
+        ## Uncomment the following section in case you are using a custom domain
+        Aliases:
+          - !If [EnableCustomDomain, !Ref Alias, !Ref "AWS::NoValue"]
+        DefaultRootObject: index.html
+        ## Since the Single Page App is taking care of the routing we need to make sure every path is served with index.html
+        ## The only exception are files that actually exist e.h. app.js, reset.css
+        CustomErrorResponses:
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - DELETE
+            - GET
+            - HEAD
+            - OPTIONS
+            - PATCH
+            - POST
+            - PUT
+          ## The origin id defined above
+          TargetOriginId: "FrontEndBucketOrigin"
+          ## Defining if and how the QueryString and Cookies are forwarded to the origin which in this case is S3
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+          Compress: true
+          ## The protocol that users can use to access the files in the origin. To allow HTTP use `allow-all`
+          ViewerProtocolPolicy: redirect-to-https
+        # CacheBehaviors:
+        #   - AllowedMethods:
+        #       - DELETE
+        #       - GET
+        #       - HEAD
+        #       - OPTIONS
+        #       - PATCH
+        #       - POST
+        #       - PUT
+        #     ## The origin id defined above
+        #     TargetOriginId: !Sub Custom-${HyphenCrmServerless}.execute-api.${AWS::Region}.amazonaws.com/${StageName}
+        #     CachePolicyId: !Ref HyphenCRMDistributionCachePolicy
+        #     ## Defining if and how the QueryString and Cookies are forwarded to the origin which in this case is S3
+        #     # ForwardedValues:
+        #     #   QueryString: true
+        #     #   Cookies:
+        #     #     Forward: all
+        #     #   Headers:
+        #     #     - "*"
+        #     Compress: true
+        #     ## The protocol that users can use to access the files in the origin. To allow HTTP use `allow-all`
+        #     ViewerProtocolPolicy: redirect-to-https
+        #     PathPattern: !Sub /api/*
+        ## The certificate to use when viewers use HTTPS to request objects.
+        ViewerCertificate:
+          CloudFrontDefaultCertificate:
+            !If [EnableCustomDomain, !Ref "AWS::NoValue", true]
+          AcmCertificateArn:
+            !If [EnableCustomDomain, !Ref SSLCertARN, !Ref "AWS::NoValue"]
+          SslSupportMethod:
+            !If [EnableCustomDomain, "sni-only", !Ref "AWS::NoValue"]
+        ## Uncomment the following section in case you want to enable logging for CloudFront requests
+        # Logging:
+        #   IncludeCookies: 'false'
+        #   Bucket: mylogs.s3.amazonaws.com
+        #   Prefix:
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudfront
+  # HyphenCRMDistributionCachePolicy:
+  #   Type: AWS::CloudFront::CachePolicy
+  #   Properties:
+  #     CachePolicyConfig:
+  #       Comment: Cahce Policy for Hyphen CRM Distribution
+  #       DefaultTTL: 86400
+  #       MaxTTL: 31536000
+  #       MinTTL: 1
+  #       Name: HyphenCRMDistributionCachePolicy
+  #       ParametersInCacheKeyAndForwardedToOrigin:
+  #         CookiesConfig:
+  #           CookieBehavior: all
+  #         HeadersConfig:
+  #           HeaderBehavior: whitelist
+  #           Headers:
+  #             - Authorization
+  #         QueryStringsConfig:
+  #           QueryStringBehavior: none
+  #         EnableAcceptEncodingGzip: true
+  # Specifying the CloudFront Distribution to server your Web Application
+  FileManagerDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+          - Id: "FileManagerBucketOrigin"
+            DomainName: !Ref FileManagerRegionalDomainName
+            # S3OriginConfig: {}
+            ## In case you want to restrict the bucket access use S3OriginConfig and remove CustomOriginConfig
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${FileManagerOriginAccessIdentity}
+        Enabled: true
+        PriceClass: "PriceClass_All"
+        HttpVersion: "http2"
+        ## Uncomment the following section in case you are using a custom domain
+        Aliases:
+          - !If [EnableCustomDomain, !Ref AssetsAlias, !Ref "AWS::NoValue"]
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - HEAD
+            - GET
+          ## The origin id defined above
+          TargetOriginId: "FileManagerBucketOrigin"
+          ## Defining if and how the QueryString and Cookies are forwarded to the origin which in this case is S3
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+          Compress: true
+          ## The protocol that users can use to access the files in the origin. To allow HTTP use `allow-all`
+          ViewerProtocolPolicy: redirect-to-https
+        ## The certificate to use when viewers use HTTPS to request objects.
+        ViewerCertificate:
+          CloudFrontDefaultCertificate:
+            !If [EnableCustomDomain, !Ref "AWS::NoValue", true]
+          AcmCertificateArn:
+            !If [EnableCustomDomain, !Ref SSLCertARN, !Ref "AWS::NoValue"]
+          SslSupportMethod:
+            !If [EnableCustomDomain, "sni-only", !Ref "AWS::NoValue"]
+        ## Uncomment the following section in case you want to enable logging for CloudFront requests
+        # Logging:
+        #   IncludeCookies: 'false'
+        #   Bucket: mylogs.s3.amazonaws.com
+        #   Prefix:
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudfront
+Outputs:
+  HyphenCRMDistributionId:
+    Value:
+      Ref: HyphenCRMDistribution
+  HyphenCRMDistributionDomain:
+    Value: !GetAtt HyphenCRMDistribution.DomainName
+  FileManagerDistributionOutput:
+    Value: !GetAtt FileManagerDistribution.DomainName
+  FileManagerDistributionId:
+    Value:
+      Ref: FileManagerDistribution

@@ -1,0 +1,1166 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Customer Import Template
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 900
+    MemorySize: 1024
+    Layers:
+      - !Ref AwsSdkLayer
+    Environment:
+      Variables:
+        entitiesTableName: !Sub ${StackNamePrefix}entities-${StageName}-db
+        entitiesTableByEntityAndId: !Sub ${StackNamePrefix}byEntityAndIdIndex-${StageName}-db
+        entitiesTableByDataAndEntity: !Sub ${StackNamePrefix}byDataAndEntityIndex-${StageName}-db
+        STACK_PREFIX: !Ref StackNamePrefix
+        ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+        ES_REGION: !Ref AWS::Region
+        FILE_MANAGER_BUCKET_NAME: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+        MACHINE_ARN: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${StackNamePrefix}CustomerImportStateMachine-${StageName}
+    Tags:
+      Environment: !Ref StageName
+      Application: !Ref ApplicationTag
+      Owner: !Ref OwnerTag
+      Purpose: !Ref PurposeTag
+      Service: lambda
+Parameters:
+  StageName:
+    Type: String
+  StackNamePrefix:
+    Type: String
+  AwsSdkLayer:
+    Type: String
+  HyphenLambdaManagedPolicy:
+    Type: String
+  ElasticsearchDomainEndpoint:
+    Type: String
+  FileManagerBucketARN:
+    Type: String
+  ElasticsearchDomain:
+    Type: String
+  StackName:
+    Type: String
+  # BuildersApiFunctionArn:
+  #   Type: String
+  # SearchApiFunctionArn:
+  #   Type: String
+  # ActivitiesApiFunctionArn:
+  #   Type: String
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+  NestedStackPrefix:
+    Type: String
+    Default: costomerImport-
+
+Resources:
+  ConvertCSVLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ConvertCSVLambdaRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ConvertCSVLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: convertcsv.main
+      CodeUri: convertcsv
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ConvertCSVLambda-${StageName}
+      Role: !GetAtt ConvertCSVLambdaRole.Arn
+
+  ConvertCSVLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ConvertCSVLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  FormatCustomersLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: FormatCustomersLambdaRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+              - Effect: Allow
+                Action:
+                  - execute-api:Invoke
+                Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+              - Effect: Allow
+                Action:
+                  - es:ESHttpPost
+                  - es:ESHttpPut
+                Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  FormatCustomersLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: formatcustomers.main
+      CodeUri: formatcustomers
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}FormatCustomersLambda-${StageName}
+      Role: !GetAtt FormatCustomersLambdaRole.Arn
+
+  FormatCustomersLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${FormatCustomersLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  ValidateCustomersLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ValidateCustomersLambdaRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+              - Effect: Allow
+                Action:
+                  - execute-api:Invoke
+                Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+              - Effect: Allow
+                Action:
+                  - es:ESHttpPost
+                  - es:ESHttpPut
+                Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                Resource: '*'
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ValidateCustomersLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: validatecustomers.main
+      CodeUri: validatecustomers
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ValidateCustomersLambda-${StageName}
+      Role: !GetAtt ValidateCustomersLambdaRole.Arn
+      Environment:
+        Variables:
+          StackName: !Ref StackName
+
+  ValidateCustomersLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ValidateCustomersLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  ImportIteratorLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ImportIteratorLambdaRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - states:StartExecution
+                Resource:
+                  - '*'
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ImportIteratorLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: importiterator.main
+      CodeUri: importiterator
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ImportIteratorLambda-${StageName}
+      Role: !GetAtt ImportIteratorLambdaRole.Arn
+
+  ImportIteratorLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ImportIteratorLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  PrepareCustomerListLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: PrepareCustomerListLambdaRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  PrepareCustomerListLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: preparelist.main
+      CodeUri: preparelist
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}PrepareCustomerListLambda-${StageName}
+      Role: !GetAtt PrepareCustomerListLambdaRole.Arn
+
+  PrepareCustomerListLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${PrepareCustomerListLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  ImportCustomerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: ImportCustomerLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ImportCustomerLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: importcustomer.main
+      CodeUri: importcustomer
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ImportCustomerLambda-${StageName}
+      Role: !GetAtt ImportCustomerLambdaRole.Arn
+
+  ImportCustomerLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ImportCustomerLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  ImportCustomerActivitiesLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: ImportCustomerActivitiesLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - execute-api:Invoke
+                Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+              - Effect: Allow
+                Action:
+                  - es:ESHttpPost
+                  - es:ESHttpPut
+                Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ImportCustomerActivitiesLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: importactivities.main
+      CodeUri: importactivities
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ImportCustomerActivitiesLambda-${StageName}
+      Role: !GetAtt ImportCustomerActivitiesLambdaRole.Arn
+
+  ImportCustomerActivitiesLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ImportCustomerActivitiesLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  ImportCustomerCobuyerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: ImportCustomerCobuyerLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: '*'
+                Condition:
+                  StringEqualsIfExists:
+                    aws:ResourceTag/hyphen:devteam: CRM
+                    aws:ResourceTag/Application: !Ref ApplicationTag
+                    aws:ResourceTag/Owner: !Ref OwnerTag
+                    aws:ResourceTag/Purpose: !Ref PurposeTag
+                    aws:ResourceTag/Service: lambda
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ImportCustomerCobuyerLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: importcobuyers.main
+      CodeUri: importcobuyers
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ImportCustomerCobuyerLambda-${StageName}
+      Role: !GetAtt ImportCustomerCobuyerLambdaRole.Arn
+
+  ImportCustomerCobuyerLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ImportCustomerCobuyerLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  PublishCustomerMessagesLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: PublishCustomerMessagesLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - SNS:Publish
+                Resource: !Sub arn:aws:sns:${AWS::Region}:${AWS::AccountId}:*
+              - Effect: Allow
+                Action:
+                  - execute-api:Invoke
+                Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+              - Effect: Allow
+                Action:
+                  - es:ESHttpPost
+                  - es:ESHttpPut
+                Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  PublishCustomerMessagesLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: publishmessages.main
+      CodeUri: publishmessages
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}PublishCustomerMessagesLambda-${StageName}
+      Role: !GetAtt PublishCustomerMessagesLambdaRole.Arn
+
+  PublishCustomerMessagesLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${PublishCustomerMessagesLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  CustomerImportCompleteLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: CustomerImportCompleteLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  CustomerImportCompleteLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: importcomplete.main
+      CodeUri: importcomplete
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}CustomerImportCompleteLambda-${StageName}
+      Role: !GetAtt CustomerImportCompleteLambdaRole.Arn
+
+  CustomerImportCompleteLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CustomerImportCompleteLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  ErrorLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: ErrorLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ErrorLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: error.main
+      CodeUri: error
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ErrorLambda-${StageName}
+      Role: !GetAtt ErrorLambdaRole.Arn
+
+  ErrorLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ErrorLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  CustomerImportStatesExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - states.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: CustomerImportStatesExecutionPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt ConvertCSVLambda.Arn
+                  - !GetAtt FormatCustomersLambda.Arn
+                  - !GetAtt ValidateCustomersLambda.Arn
+                  - !GetAtt ImportIteratorLambda.Arn
+                  - !GetAtt PrepareCustomerListLambda.Arn
+                  - !GetAtt ImportCustomerLambda.Arn
+                  - !GetAtt ImportCustomerCobuyerLambda.Arn
+                  - !GetAtt ImportCustomerActivitiesLambda.Arn
+                  - !GetAtt PublishCustomerMessagesLambda.Arn
+                  - !GetAtt CustomerImportCompleteLambda.Arn
+                  - !GetAtt ErrorLambda.Arn
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !Sub ${ConvertCSVLambda.Arn}:*
+                  - !Sub ${FormatCustomersLambda.Arn}:*
+                  - !Sub ${ValidateCustomersLambda.Arn}:*
+                  - !Sub ${ImportIteratorLambda.Arn}:*
+                  - !Sub ${PrepareCustomerListLambda.Arn}:*
+                  - !Sub ${ImportCustomerActivitiesLambda.Arn}:*
+                  - !Sub ${PublishCustomerMessagesLambda.Arn}:*
+                  - !Sub ${ImportCustomerLambda.Arn}:*
+                  - !Sub ${ImportCustomerCobuyerLambda.Arn}:*
+                  - !Sub ${CustomerImportCompleteLambda.Arn}:*
+                  - !Sub ${ErrorLambda.Arn}:*
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogDelivery
+                  - logs:GetLogDelivery
+                  - logs:UpdateLogDelivery
+                  - logs:DeleteLogDelivery
+                  - logs:ListLogDeliveries
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeLogGroups
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                  - xray:GetSamplingRules
+                  - xray:GetSamplingTargets
+                Resource: '*'
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  CustomerImportStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub ${StackNamePrefix}CustomerImportStateMachine-${StageName}
+      DefinitionString: !Sub
+        - |-
+          {
+            "Comment": "State machine for calculating entity import",
+            "StartAt": "SkipToCustomerImport?",
+            "States": {
+              "SkipToCustomerImport?": {
+                "Comment": "Whether to skip straight to customer import next iteration",
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.skipToCustomerImport",
+                    "BooleanEquals": true,
+                    "Next": "ImportIterator"
+                  }
+                ],
+                "Default": "ConvertCSVAndValidate"
+              },
+              "ConvertCSVAndValidate": {
+                "Type": "Task",
+                "Resource": "${convertCSVLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "IsValidCSV?"
+              },
+              "IsValidCSV?": {
+                "Comment": "If the CSV is Valid",
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.isValidCSV",
+                    "BooleanEquals": true,
+                    "Next": "FormatCustomers"
+                  }
+                ],
+                "Default": "ErrorOccured"
+              },
+              "FormatCustomers": {
+                "Type": "Task",
+                "Resource": "${formatCustomersLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "ValidateCustomers"
+              },
+              "ValidateCustomers": {
+                "Type": "Task",
+                "Resource": "${validateCustomersLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "IsValidCustomers?"
+              },
+              "IsValidCustomers?": {
+                "Comment": "If the customers in the request JSON are valid",
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.isValidCustomers",
+                    "BooleanEquals": true,
+                    "Next": "ConfigureImportCount"
+                  }
+                ],
+                "Default": "ErrorOccured"
+              },
+              "ConfigureImportCount": {
+                "Type": "Pass",
+                "Result": {
+                  "index": -1,
+                  "step": 10
+                },
+                "ResultPath": "$.importiterator",
+                "Next": "ImportIterator"
+              },
+              "ImportIterator": {
+                "Type": "Task",
+                "Resource": "${importIteratorLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "ResultPath": "$.importiterator",
+                "Next": "IsCustomersCountReached?"
+              },
+              "IsCustomersCountReached?": {
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.importiterator.continue",
+                    "BooleanEquals": true,
+                    "Next": "PrepareCustomerList"
+                  }
+                ],
+                "Default": "CustomerImportComplete"
+              },
+              "PrepareCustomerList": {
+                "Type": "Task",
+                "Resource": "${prepareCustomerListLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "ImportAllCustomers"
+              },
+              "ImportAllCustomers": {
+                "Type": "Map",
+                "ItemsPath": "$.customerList",
+                "Parameters": {
+                  "list.$": "$$.Map.Item.Value",
+                  "validatedFileKey.$": "$.validatedFileKey",
+                  "statusFileKey.$": "$.statusFileKey",
+                  "doImportCustomerExecution.$": "$.doImportCustomerExecution",
+                  "BuildersApiFunctionArn.$": "$.BuildersApiFunctionArn",
+                  "SearchApiFunctionArn.$": "$.SearchApiFunctionArn",
+                  "ActivitiesApiFunctionArn.$": "$.ActivitiesApiFunctionArn",
+                  "CobuyersApiFunctionArn.$": "$.CobuyersApiFunctionArn",
+                  "commMappedMetro.$":"$.commMappedMetro"
+                },
+                "MaxConcurrency": 1,
+                "Catch": [
+                  {
+                    "ErrorEquals": ["States.ALL"],
+                    "Next": "ErrorOccured"
+                  }
+                ],
+                "Iterator": {
+                  "StartAt": "ImportCustomer",
+                  "States": {
+                    "ImportCustomer": {
+                      "Type": "Task",
+                      "Resource": "${importCustomerLambdaARN}",
+                      "TimeoutSeconds": 86400,
+                      "HeartbeatSeconds": 3600,
+                      "Next": "IsCustomerCreated?"
+                    },
+                    "IsCustomerCreated?": {
+                      "Type": "Choice",
+                      "Choices": [
+                        {
+                          "Variable": "$.status",
+                          "BooleanEquals": true,
+                          "Next": "ImportCobuyer"
+                        }
+                      ],
+                      "Default": "ImportComplete"
+                    },
+                    "ImportCobuyer": {
+                      "Type": "Task",
+                      "Resource": "${importCobuyerLambdaARN}",
+                      "TimeoutSeconds": 86400,
+                      "HeartbeatSeconds": 3600,
+                      "Next": "ImportCustomerActivities"
+                    },
+                    "ImportCustomerActivities": {
+                      "Type": "Task",
+                      "Resource": "${importCustomerActivitiesLambdaARN}",
+                      "TimeoutSeconds": 86400,
+                      "HeartbeatSeconds": 3600,
+                      "Next": "PublishCustomerMessages"
+                    },
+                    "PublishCustomerMessages": {
+                      "Type": "Task",
+                      "Resource": "${publishCustomerMessagesLambdaARN}",
+                      "TimeoutSeconds": 86400,
+                      "HeartbeatSeconds": 3600,
+                      "Next": "ImportComplete"
+                    },
+                    "ImportComplete": {
+                      "Type": "Pass",
+                      "End": true
+                    }
+                  }
+                },
+                "ResultPath": "$.error",
+                "Next": "ImportIterator"
+              },
+              "CustomerImportComplete": {
+                "Type": "Task",
+                "Resource": "${importCompleteLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "EndProcess"
+              },
+              "ErrorOccured": {
+                "Type": "Task",
+                "Resource": "${errorLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "ImportFailed"
+              },
+              "ImportFailed": {
+                "Type": "Fail",
+                "Cause": "Invalid request/Exception occured",
+                "Error": "Request contains invalid or missing values/Exception"
+              },
+              "EndProcess": {
+                "Type": "Pass",
+                "End": true
+              }
+            }
+          }
+        - convertCSVLambdaARN: !GetAtt ConvertCSVLambda.Arn
+          formatCustomersLambdaARN: !GetAtt FormatCustomersLambda.Arn
+          validateCustomersLambdaARN: !GetAtt ValidateCustomersLambda.Arn
+          importIteratorLambdaARN: !GetAtt ImportIteratorLambda.Arn
+          prepareCustomerListLambdaARN: !GetAtt PrepareCustomerListLambda.Arn
+          importCustomerLambdaARN: !GetAtt ImportCustomerLambda.Arn
+          importCobuyerLambdaARN: !GetAtt ImportCustomerCobuyerLambda.Arn
+          importCustomerActivitiesLambdaARN: !GetAtt ImportCustomerActivitiesLambda.Arn
+          publishCustomerMessagesLambdaARN: !GetAtt PublishCustomerMessagesLambda.Arn
+          importCompleteLambdaARN: !GetAtt CustomerImportCompleteLambda.Arn
+          errorLambdaARN: !GetAtt ErrorLambda.Arn
+      RoleArn: !GetAtt CustomerImportStatesExecutionRole.Arn
+      LoggingConfiguration:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt CustomerImportStateMachineLogGroup.Arn
+        IncludeExecutionData: true
+        Level: ALL
+      TracingConfiguration:
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: stepfunctions
+
+  CustomerImportStateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/vendedlogs/states/${StackNamePrefix}CustomerImport-${StageName}
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  StateMachineStartExecutionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      # ManagedPolicyName: !Sub ${StackNamePrefix}state-machine-start-execution-policy-${StageName}
+      Roles:
+        - !Ref StateMachineStartExecutionRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - states:StartExecution
+            Resource:
+              - !Ref CustomerImportStateMachine
+          - Effect: Allow
+            Action:
+              - logs:CreateLogDelivery
+              - logs:GetLogDelivery
+              - logs:UpdateLogDelivery
+              - logs:DeleteLogDelivery
+              - logs:ListLogDeliveries
+              - logs:PutResourcePolicy
+              - logs:DescribeResourcePolicies
+              - logs:DescribeLogGroups
+            Resource: '*'
+
+  StateMachineStartExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      # RoleName: !Sub ${StackNamePrefix}state-machine-start-execution-role-${StageName}
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+Outputs:
+  CustomerImportStateMachineArn:
+    Value: !GetAtt CustomerImportStateMachine.Arn

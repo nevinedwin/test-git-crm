@@ -1,0 +1,136 @@
+{
+    "crm-hhh-entities-dev-db": [
+        {
+            "PutRequest": {
+                "Item": {
+                    "id": {
+                        "S": "aj01a8b8-011b-11ea-8d71-362b9e155667"
+                    },
+                    "hb_id": {
+                        "S": "3179c00b-e82e-4a15-ac4c-8c80611aabe5"
+                    },
+                    "type": {
+                        "S": "agency"
+                    },
+                    "cname": {
+                        "S": "eXp Realty"
+                    },
+                    "tname": {
+                        "S": "The Z Team"
+                    },
+                    "cdt": {
+                        "S": "1573103886"
+                    },
+                    "mdt": {
+                        "S": "1573103886"
+                    },
+                    "m_id": {
+                        "SS": ["6c2cfeba-ffa4-11e9-8d71-362b9e155667"]
+                    },
+                    "stat": {
+                        "S": "active"
+                    }
+                }
+            }
+        },
+        {
+            "PutRequest": {
+                "Item": {
+                    "id": {
+                        "S": "aj01a8b8-011b-11ea-8d71-362b9e155667"
+                    },
+                    "hb_id": {
+                        "S": "3179c00b-e82e-4a15-ac4c-8c80611aabe5"
+                    },
+                    "type": {
+                        "S": "broker"
+                    },
+                    "fname": {
+                        "S": "Jimmy"
+                    },
+                    "lname": {
+                        "S": "John"
+                    },
+                    "cdt": {
+                        "S": "1573103886"
+                    },
+                    "mdt": {
+                        "S": "1573103886"
+                    },
+                    "m_id": {
+                        "SS": ["6c2cfeba-ffa4-11e9-8d71-362b9e155667"]
+                    },
+                    "email": {
+                        "S": "jimmyjohn@fm.com"
+                    },
+                    "phone": {
+                        "S": "6456465465"
+                    },
+                    "rel_id": {
+                        "S": "aj01a8b8-011b-11ea-8d71-362b9e155667"
+                    },
+                    "stat": {
+                        "S": "active"
+                    }
+                }
+            }
+        },
+        {
+            "PutRequest": {
+                "Item": {
+                    "id": {
+                        "S": "aj03a8b8-011b-11ea-8d71-362b9e155667"
+                    },
+                    "hb_id": {
+                        "S": "3179c00b-e82e-4a15-ac4c-8c80611aabe5"
+                    },
+                    "type": {
+                        "S": "realtor"
+                    },
+                    "fname": {
+                        "S": "Michel"
+                    },
+                    "lname": {
+                        "S": "Perrera"
+                    },
+                    "cdt": {
+                        "S": "1573103886"
+                    },
+                    "mdt": {
+                        "S": "1573103886"
+                    },
+                    "exp": {
+                        "SS": ["75fc4cee-011f-11ea-8d71-362b9e155667", "75fc511c-011f-11ea-8d71-362b9e155667"]
+                    },
+                    "spl": {
+                        "SS": ["75fc590a-011f-11ea-8d71-362b9e155667", "75fc604b-011f-11ea-8d71-362b9e155667"]
+                    },
+                    "infl": {
+                        "SS": ["1", "2"]
+                    },
+                    "cntm": {
+                        "S": "Email"
+                    },
+                    "psrc": {
+                        "S": "Web"
+                    },
+                    "fav": {
+                        "BOOL": false
+                    },
+                    "email": {
+                        "S": "michel@fm.com"
+                    },
+                    "phone": {
+                        "S": "6456412412"
+                    },
+                    "rel_id": {
+                        "S": "aj01a8b8-011b-11ea-8d71-362b9e155667"
+                    },
+                    "stat": {
+                        "S": "active"
+                    }
+                }
+            }
+        }
+    ]
+}

@@ -1,0 +1,252 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  ArtifactBucket:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: Used by Codepipeline to store artifacts
+    Default: /CloudFormation/Environment/PipelineArtifactsBucket
+  CfResourceBucket:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: S3 bucket that stores packaged cloudformation resources
+    Default: /CloudFormation/Environment/CfResourceBucket
+  SourceBucket:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: S3 bucket that stores deployment artifacts
+    Default: /CloudFormation/Environment/DeploymentSourceBucket
+  ProjectName:
+    Type: String
+    Description: Name used for Cloudformation Stack, Codebuild Project, etc.
+  RootTemplate:
+    Type: String
+    Description: Name used for Cloudformation Stack, Codebuild Project, etc.
+
+Resources:
+  CodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    DependsOn: CodeBuildProject
+    Properties:
+      Name: !Ref ProjectName
+      RoleArn: !GetAtt
+        - PipelineServiceRole
+        - Arn
+      ArtifactStore:
+        Location: !Ref ArtifactBucket
+        Type: S3
+      Stages:
+        - Name: Source
+          Actions:
+            - ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: "1"
+                Provider: S3
+              Configuration:
+                S3Bucket: !Ref SourceBucket
+                S3ObjectKey: null.zip
+              OutputArtifacts:
+                - Name: NullArtifact
+              Name: NullSource
+              Region: !Ref AWS::Region
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: "1"
+              Configuration:
+                ProjectName: !Ref ProjectName
+              InputArtifacts:
+                - Name: NullArtifact
+              OutputArtifacts:
+                - Name: CfTemplate
+              Name: Build
+              Region: !Ref AWS::Region
+              RunOrder: 1
+        - Name: Deploy
+          Actions:
+            - ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: "1"
+              Configuration:
+                ActionMode: REPLACE_ON_FAILURE
+                Capabilities: "CAPABILITY_IAM,CAPABILITY_AUTO_EXPAND"
+                RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/hyphen/deployment/codepipeline/${ProjectName}/cf-deploy-${ProjectName}
+                ChangeSetName: !Sub ${ProjectName}
+                StackName: !Sub ${ProjectName}
+                TemplatePath: "CfTemplate::template.yaml"
+                # TemplateConfiguration: 'CfTemplate::cf_config.json'
+              InputArtifacts:
+                - Name: CfTemplate
+              Name: DeployStack
+              Region: !Ref "AWS::Region"
+              RunOrder: 2
+
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Ref ProjectName
+      Source:
+        # InsecureSsl: false
+        Type: CODEPIPELINE
+        BuildSpec: |-
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                nodejs: 10
+                python: 3.7
+              commands:
+                - pip install cfn-flip
+            build:
+              commands:
+                - aws s3api get-object --key "deploy.sh" --bucket "$sourceBucket" deploy.sh
+                - chmod +x deploy.sh 
+                - ./deploy.sh "$projectName" "$sourceBucket" "$cfResourceBucket" "$rootTemplate"
+          artifacts:
+            type: zip
+            files:
+              - template.yaml
+        # InsecureSsl: false
+      Artifacts:
+        EncryptionDisabled: false
+        Name: !Ref ProjectName
+        Packaging: NONE
+        Type: CODEPIPELINE
+      Cache:
+        Type: NO_CACHE
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:2.0
+        ImagePullCredentialsType: CODEBUILD
+        EnvironmentVariables:
+          - Name: projectName
+            Type: PLAINTEXT
+            Value: !Ref ProjectName
+          - Name: sourceBucket
+            Type: PLAINTEXT
+            Value: !Ref SourceBucket
+          - Name: cfResourceBucket
+            Type: PLAINTEXT
+            Value: !Ref CfResourceBucket
+          - Name: rootTemplate
+            Type: PLAINTEXT
+            Value: !Ref RootTemplate
+        PrivilegedMode: false
+        Type: LINUX_CONTAINER
+      ServiceRole: !GetAtt
+        - CodeBuildRole
+        - Arn
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+          GroupName: !Ref LogGroup
+          StreamName: !Ref CodeBuildLogStream
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub ${ProjectName}-build
+      RetentionInDays: 5
+
+  CodeBuildLogStream:
+    Type: AWS::Logs::LogStream
+    Properties:
+      LogGroupName: !Ref LogGroup
+      LogStreamName: !Sub ${ProjectName}-codebuild
+
+  PipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: !Sub /hyphen/deployment/codepipeline/${ProjectName}/
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      MaxSessionDuration: 3600
+      Policies:
+        - PolicyName: PipelineServiceRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource: !Sub arn:aws:s3:::${ArtifactBucket}/*
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucketVersions
+                  - s3:ListBucket
+                  - s3:GetBucketVersioning
+                  - s3:GetObjectVersion
+                Resource:
+                  - !Sub arn:aws:s3:::${SourceBucket}
+                  - !Sub arn:aws:s3:::${SourceBucket}/null.zip
+              - Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource: !GetAtt
+                  - CodeBuildProject
+                  - Arn
+              - Action:
+                  - "cloudformation:*"
+                Resource: "*"
+                Effect: Allow
+              - Action:
+                  - "iam:PassRole"
+                Resource: !Sub arn:aws:iam::${AWS::AccountId}:role/hyphen/deployment/codepipeline/${ProjectName}/cf-deploy-${ProjectName}
+                Effect: Allow
+
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: !Sub /hyphen/deployment/codebuild/${ProjectName}/
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSCodePipelineCustomActionAccess
+      Policies:
+        - PolicyName: CodeBuildServiceRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:PutLogEvents
+                  - logs:CreateLogStream
+                Resource:
+                  - !Sub arn:aws:logs:${AWS::Region}:*:log-group:${LogGroup}:log-stream:${CodeBuildLogStream}/*
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub arn:aws:s3:::${ArtifactBucket}/*
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetObject
+                Resource:
+                  - !Sub arn:aws:s3:::${SourceBucket}
+                  - !Sub arn:aws:s3:::${SourceBucket}/${ProjectName}/*
+                  - !Sub arn:aws:s3:::${SourceBucket}/deploy.sh
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub arn:aws:s3:::${CfResourceBucket}/${ProjectName}/*

@@ -1,0 +1,154 @@
+{
+  "Comment": "State machine for importing note notes.",
+  "StartAt": "SkipToNoteImport?",
+  "States": {
+    "SkipToNoteImport?": {
+      "Comment": "Whether to skip straight to note notes import next iteration",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.skipToNoteImport",
+          "BooleanEquals": true,
+          "Next": "ImportIterator"
+        }
+      ],
+      "Default": "ConvertCSVAndValidate"
+    },
+    "ConvertCSVAndValidate": {
+      "Type": "Task",
+      "Resource": "${convertCSVLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "Next": "IsValidCSV?"
+    },
+    "IsValidCSV?": {
+      "Comment": "If the CSV is Valid",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.isValidCSV",
+          "BooleanEquals": true,
+          "Next": "FormatNotes"
+        }
+      ],
+      "Default": "ErrorOccured"
+    },
+    "FormatNotes": {
+      "Type": "Task",
+      "Resource": "${formatNotesLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "Next": "ValidateNotes"
+    },
+    "ValidateNotes": {
+      "Type": "Task",
+      "Resource": "${validateNotesLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "Next": "IsValidNotes?"
+    },
+    "IsValidNotes?": {
+      "Comment": "If the notes in the request JSON are valid",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.isValidNotes",
+          "BooleanEquals": true,
+          "Next": "ConfigureImportCount"
+        }
+      ],
+      "Default": "ErrorOccured"
+    },
+    "ConfigureImportCount": {
+      "Type": "Pass",
+      "Result": {
+        "index": -1,
+        "step": 100
+      },
+      "ResultPath": "$.importiterator",
+      "Next": "ImportIterator"
+    },
+    "ImportIterator": {
+      "Type": "Task",
+      "Resource": "${importIteratorLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "ResultPath": "$.importiterator",
+      "Next": "IsNotesCountReached?"
+    },
+    "IsNotesCountReached?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.importiterator.continue",
+          "BooleanEquals": true,
+          "Next": "PrepareNotesList"
+        }
+      ],
+      "Default": "NoteImportComplete"
+    },
+    "PrepareNotesList": {
+      "Type": "Task",
+      "Resource": "${prepareNotesListLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "Next": "ImportAllNotes"
+    },
+    "ImportAllNotes": {
+      "Type": "Map",
+      "ItemsPath": "$.noteList",
+      "Parameters": {
+        "list.$": "$$.Map.Item.Value",
+        "validatedFileKey.$": "$.validatedFileKey",
+        "doImportNoteExecution.$": "$.doImportNoteExecution",
+        "BuildersApiFunctionArn.$": "$.BuildersApiFunctionArn",
+        "SearchApiFunctionArn.$": "$.SearchApiFunctionArn",
+        "ActivitiesApiFunctionArn.$": "$.ActivitiesApiFunctionArn"
+      },
+      "MaxConcurrency": 40,
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "ErrorOccured"
+        }
+      ],
+      "Iterator": {
+        "StartAt": "ImportNotes",
+        "States": {
+          "ImportNotes": {
+            "Type": "Task",
+            "Resource": "${importNotesLambdaARN}",
+            "TimeoutSeconds": 86400,
+            "HeartbeatSeconds": 3600,
+            "End": true
+          }
+        }
+      },
+      "ResultPath": null,
+      "Next": "ImportIterator"
+    },
+    "NoteImportComplete": {
+      "Type": "Task",
+      "Resource": "${importCompleteLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "Next": "EndProcess"
+    },
+    "ErrorOccured": {
+      "Type": "Task",
+      "Resource": "${errorLambdaARN}",
+      "TimeoutSeconds": 86400,
+      "HeartbeatSeconds": 3600,
+      "Next": "ImportFailed"
+    },
+    "ImportFailed": {
+      "Type": "Fail",
+      "Cause": "Invalid request/Exception occured",
+      "Error": "Request contains invalid or missing values/Exception"
+    },
+    "EndProcess": {
+      "Type": "Pass",
+      "End": true
+    }
+  }
+}

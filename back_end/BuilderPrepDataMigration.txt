@@ -1,0 +1,7 @@
+PROD
+Export builder data to s3 bucket
+
+UAT
+Copy from PROD exported file
+Trigger lambda to import using step function
+Validate id duplicates

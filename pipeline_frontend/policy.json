@@ -1,0 +1,29 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "VisualEditor0",
+            "Effect": "Allow",
+            "Action": [
+                "s3:PutObject",
+                "cloudfront:CreateInvalidation",
+                "s3:PutObjectAcl",
+                "cloudformation:DescribeStacks"
+            ],
+            "Resource": [
+                "arn:aws:cloudformation:us-west-2:748787612401:stack/aws-crm/*",
+                "arn:aws:cloudfront::748787612401:distribution/*",
+                "arn:aws:s3:::aws-crm-frontend-*-s3/*"
+            ]
+        },
+        {
+            "Sid": "VisualEditor1",
+            "Effect": "Allow",
+            "Action": [
+                "codepipeline:PutJobFailureResult",
+                "codepipeline:PutJobSuccessResult"
+            ],
+            "Resource": "*"
+        }
+    ]
+}

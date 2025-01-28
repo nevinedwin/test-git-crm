@@ -1,0 +1,7 @@
+Update the customer desf
+https://5l39k5tgw0.execute-api.us-west-2.amazonaws.com/dev/api/auth/customers/updesf
+
+Re-Index the elasticsearch Index
+https://5l39k5tgw0.execute-api.us-west-2.amazonaws.com/dev/api/auth/search/reindex
+
+Update the customers with new desf

@@ -1,0 +1,115 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: "Hyphen CRM SAM Template"
+
+Parameters:
+  elasticDomainName:
+    Type: String
+  ElasticRoleARN:
+    Type: String
+  ElasticInstanceType:
+    Type: String
+  ElasticInstanceCount:
+    Type: String
+  MasterEnabled:
+    Type: String
+  DedicatedMasterType:
+    Type: String
+  DedicatedMasterCount:
+    Type: Number
+  EBSVolumeSize:
+    Type: Number
+  EBSVolumeType:
+    Type: String
+  AvailabilityZoneCount:
+    Type: Number
+  ZoneAwarenessEnabled:
+    Type: String
+  ElasticVersion:
+    Type: String
+    Default: "6.8"
+  StageName:
+    Type: String
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+Conditions:
+  IsMasterEnabled: !Equals [!Ref MasterEnabled, "true"]
+  IsZoneAwarenessEnabled: !Equals [!Ref ZoneAwarenessEnabled, "true"]
+
+Resources:
+  ElasticsearchDomain:
+    Type: AWS::Elasticsearch::Domain
+    # UpdatePolicy:
+    #   EnableVersionUpgrade: true
+    Properties:
+      DomainName: !Ref elasticDomainName
+      ElasticsearchClusterConfig:
+        InstanceType: !Ref ElasticInstanceType
+        InstanceCount: !Ref ElasticInstanceCount
+        DedicatedMasterEnabled: !Ref MasterEnabled
+        DedicatedMasterType:
+          !If [IsMasterEnabled, !Ref DedicatedMasterType, !Ref "AWS::NoValue"]
+        DedicatedMasterCount:
+          !If [IsMasterEnabled, !Ref DedicatedMasterCount, !Ref "AWS::NoValue"]
+        ZoneAwarenessConfig:
+          AvailabilityZoneCount:
+            !If [
+              IsZoneAwarenessEnabled,
+              !Ref AvailabilityZoneCount,
+              !Ref "AWS::NoValue",
+            ]
+        ZoneAwarenessEnabled: !Ref ZoneAwarenessEnabled
+      EBSOptions:
+        EBSEnabled: true
+        Iops: 0
+        VolumeSize: !Ref EBSVolumeSize
+        VolumeType: !Ref EBSVolumeType
+      AccessPolicies:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              AWS: !Ref ElasticRoleARN
+            Action: "es:*"
+            Resource: "*"
+      AdvancedOptions:
+        indices.fielddata.cache.size: ""
+        rest.action.multi.allow_explicit_index: "true"
+      ElasticsearchVersion: !Ref ElasticVersion
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: elasticsearch
+
+Outputs:
+  ElasticsearchDomain:
+    Description: "ElasticsearchDomain"
+    Value: !Ref ElasticsearchDomain
+    Export:
+      Name: !Sub "${AWS::StackName}-ElasticsearchDomain"
+  ElasticsearchDomainARN:
+    Description: "ElasticsearchDomainARN"
+    Value: !GetAtt ElasticsearchDomain.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-ElasticsearchDomainARN"
+  ElasticDomainARN:
+    Description: "ElasticDomainARN"
+    Value: !GetAtt ElasticsearchDomain.DomainArn
+    Export:
+      Name: !Sub "${AWS::StackName}-ElasticDomainARN"
+  ElasticsearchDomainEndpoint:
+    Description: "ElasticsearchDomainEndpoint"
+    Value: !GetAtt ElasticsearchDomain.DomainEndpoint
+    Export:
+      Name: !Sub "${AWS::StackName}-ElasticsearchDomainEndpoint"

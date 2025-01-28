@@ -1,0 +1,262 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: "Hyphen CRM SAM Template"
+
+Parameters:
+  StageName:
+    Type: String
+  StackNamePrefix:
+    Type: String
+  AwsSdkLayer:
+    Type: String
+  ElasticsearchDomainEndpoint:
+    Type: String
+  CognitoUserPoolId:
+    Type: String
+  CognitoUserPoolClientId:
+    Type: String
+  DynamoDBArn:
+    Type: String
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+  NestedStackPrefix:
+    Type: String
+    Default: "socketService-" 
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 60
+    Layers:
+      - !Ref AwsSdkLayer
+    Environment:
+      Variables:
+        entitiesTableName: !Sub ${StackNamePrefix}entities-${StageName}-db
+        entitiesTableByEntityAndId: !Sub ${StackNamePrefix}byEntityAndIdIndex-${StageName}-db
+        entitiesTableByDataAndEntity: !Sub ${StackNamePrefix}byDataAndEntityIndex-${StageName}-db
+        STACK_PREFIX: !Ref StackNamePrefix
+        ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+        ES_REGION: !Ref AWS::Region
+        FILE_MANAGER_BUCKET_NAME: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+    Tags:
+      Environment: !Ref StageName
+      Application: !Ref ApplicationTag
+      Owner: !Ref OwnerTag
+      Purpose: !Ref PurposeTag
+      Service: lambda
+
+Resources:
+  AuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: authorizer.main
+      CodeUri: authorizer
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}AuthorizerFunction-${StageName}
+      Policies:
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+                - logs:DescribeLogStreams
+              Resource: "*"
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref CognitoUserPoolId
+          USER_POOL_CLIENT_ID: !Ref CognitoUserPoolClientId
+
+  AuthorizerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AuthorizerFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  SocketHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: socket.main
+      CodeUri: socket
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}SocketHandlerFunction-${StageName}
+      Policies:
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - execute-api:ManageConnections
+                - execute-api:Invoke
+              Resource:
+                - !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HyphenCRMWebSocketsGateway}/*
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:UpdateItem
+              Resource:
+                - !Ref DynamoDBArn
+                - !Sub ${DynamoDBArn}/index/*
+
+  SocketHandlerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${SocketHandlerFunction}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  HyphenCRMWebSocketsGateway:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub ${StackNamePrefix}HyphenCRMWebSocketsGateway-${StageName}-ag
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: $request.body.action
+
+  LambdaAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      Name: LambdaAuth
+      ApiId: !Ref HyphenCRMWebSocketsGateway
+      AuthorizerType: REQUEST
+      AuthorizerUri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthorizerFunction.Arn}/invocations
+      IdentitySource:
+        - route.request.querystring.token
+
+  ApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HyphenCRMWebSocketsGateway
+      Description: Socket Lambda Integration
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SocketHandlerFunction.Arn}/invocations
+      IntegrationMethod: POST
+      
+
+  ConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HyphenCRMWebSocketsGateway
+      RouteKey: "$connect"
+      AuthorizationType: CUSTOM
+      OperationName: ConnectRoute
+      AuthorizerId: !Ref LambdaAuthorizer
+      Target: !Sub integrations/${ApiIntegration}
+
+  DisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HyphenCRMWebSocketsGateway
+      RouteKey: "$disconnect"
+      AuthorizationType: NONE
+      OperationName: DisconnectRoute
+      Target: !Sub integrations/${ApiIntegration}
+
+  DefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HyphenCRMWebSocketsGateway
+      RouteKey: "$default"
+      AuthorizationType: NONE
+      OperationName: DefaultRoute
+      Target: !Sub integrations/${ApiIntegration}
+
+  DefaultRouteResponse:
+    Type: AWS::ApiGatewayV2::RouteResponse
+    Properties:
+      RouteId: !Ref DefaultRoute
+      ApiId: !Ref HyphenCRMWebSocketsGateway
+      RouteResponseKey: $default
+
+  DeploymentNew:
+    Type: AWS::ApiGatewayV2::Deployment
+    DependsOn:
+      - ConnectRoute
+      - DisconnectRoute
+      - DefaultRoute
+    Properties:
+      ApiId: !Ref HyphenCRMWebSocketsGateway
+
+  Stage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      StageName: !Ref StageName
+      Description: !Ref StageName
+      DeploymentId: !Ref DeploymentNew
+      DefaultRouteSettings:
+        DetailedMetricsEnabled: true
+      AccessLogSettings:
+        DestinationArn: !GetAtt WebSocketApiLogGroup.Arn
+        Format: $context.identity.sourceIp - - [$context.requestTime] "$context.httpMethod $context.routeKey $context.protocol" $context.status $context.responseLength $context.requestId $context.integrationErrorMessage
+      ApiId: !Ref HyphenCRMWebSocketsGateway
+
+  WebSocketApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    DependsOn:
+      - HyphenCRMWebSocketsGateway
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/apigateway/${StackNamePrefix}HyphenCRMWebSocketsGateway-${StageName}-ag
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  AuthorizerFunctionPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - HyphenCRMWebSocketsGateway
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref AuthorizerFunction
+      Principal: apigateway.amazonaws.com
+
+  HandlerFunctionPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - HyphenCRMWebSocketsGateway
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref SocketHandlerFunction
+      Principal: apigateway.amazonaws.com
+
+Outputs:
+  HyphenCRMWebSocketsGateway:
+    Description: "Websocket gateway api-id"
+    Value: !Ref HyphenCRMWebSocketsGateway
+  HyphenCRMWebSocketsGatewayEndpoint:
+    Description: "The WSS Protocol URI to connect to"
+    Value: !Sub ${HyphenCRMWebSocketsGateway.ApiEndpoint}/${StageName}
+  HyphenCRMWebSocketsGatewayPOSTEndpoint:
+    Description: "Post endpoint for Sockets"
+    Value: !Sub https://${HyphenCRMWebSocketsGateway}.execute-api.${AWS::Region}.amazonaws.com/${StageName}

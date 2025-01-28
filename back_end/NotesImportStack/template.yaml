@@ -1,0 +1,910 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: "Customer Notes Import Template"
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 900
+    MemorySize: 1024
+    Layers:
+      - !Ref AwsSdkLayer
+    Environment:
+      Variables:
+        entitiesTableName: !Sub ${StackNamePrefix}entities-${StageName}-db
+        entitiesTableByEntityAndId: !Sub ${StackNamePrefix}byEntityAndIdIndex-${StageName}-db
+        entitiesTableByDataAndEntity: !Sub ${StackNamePrefix}byDataAndEntityIndex-${StageName}-db
+        STACK_PREFIX: !Ref StackNamePrefix
+        ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+        ES_REGION: !Ref AWS::Region
+        FILE_MANAGER_BUCKET_NAME: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+        MACHINE_ARN: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${StackNamePrefix}NoteImportStateMachine-${StageName}
+    Tags:
+      Environment: !Ref StageName
+      Application: !Ref ApplicationTag
+      Owner: !Ref OwnerTag
+      Purpose: !Ref PurposeTag
+      Service: lambda
+Parameters:
+  StageName:
+    Type: String
+  StackNamePrefix:
+    Type: String
+  AwsSdkLayer:
+    Type: String
+  HyphenLambdaManagedPolicy:
+    Type: String
+  ElasticsearchDomainEndpoint:
+    Type: String
+  FileManagerBucketARN:
+    Type: String
+  ElasticsearchDomain:
+    Type: String
+  StackName:
+    Type: String
+  # BuildersApiFunctionArn:
+  #   Type: String
+  # SearchApiFunctionArn:
+  #   Type: String
+  # ActivitiesApiFunctionArn:
+  #   Type: String
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+  NestedStackPrefix:
+    Type: String
+    Default: "notesImport-"
+
+Resources:
+  ConvertCSVLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ConvertCSVLambdaRolePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ConvertCSVLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: convertcsv.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ConvertCSVLambda-${StageName}
+      CodeUri: convertcsv
+      Role: !GetAtt ConvertCSVLambdaRole.Arn
+
+  ConvertCSVLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ConvertCSVLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  FormatNotesLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: FormatNotesLambdaRolePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+              - Effect: Allow
+                Action:
+                  - execute-api:Invoke
+                Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  FormatNotesLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: formatnotes.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}FormatNotesLambda-${StageName}
+      CodeUri: formatnotes
+      Role: !GetAtt FormatNotesLambdaRole.Arn
+
+  FormatNotesLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${FormatNotesLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  ValidateNotesLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ValidateNotesLambdaRolePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+              - Effect: Allow
+                Action:
+                  - execute-api:Invoke
+                Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+              - Effect: Allow
+                Action:
+                  - es:ESHttpPost
+                  - es:ESHttpPut
+                Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                Resource: "*"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ValidateNotesLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: validatenotes.main
+      CodeUri: validatenotes
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ValidateNotesLambda-${StageName}
+      Role: !GetAtt ValidateNotesLambdaRole.Arn
+      Environment:
+        Variables:
+          StackName: !Ref StackName
+
+  ValidateNotesLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ValidateNotesLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  ImportIteratorLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ImportIteratorLambdaRolePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - states:StartExecution
+                Resource:
+                  - "*"
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ImportIteratorLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: importiterator.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ImportIteratorLambda-${StageName}
+      CodeUri: importiterator
+      Role: !GetAtt ImportIteratorLambdaRole.Arn
+
+  ImportIteratorLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ImportIteratorLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  PrepareNotesListLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: PrepareNotesListLambdaRolePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  PrepareNotesListLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: preparelist.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}PrepareNotesListLambda-${StageName}
+      CodeUri: preparelist
+      Role: !GetAtt PrepareNotesListLambdaRole.Arn
+
+  PrepareNotesListLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${PrepareNotesListLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  ImportNotesLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: ImportNotesLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - execute-api:Invoke
+                Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+              - Effect: Allow
+                Action:
+                  - es:ESHttpPost
+                  - es:ESHttpPut
+                Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ImportNotesLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: importnotes.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ImportNotesLambda-${StageName}
+      CodeUri: importnotes
+      Role: !GetAtt ImportNotesLambdaRole.Arn
+
+  ImportNotesLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ImportNotesLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  NoteImportCompleteLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: NoteImportCompleteLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  NoteImportCompleteLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: importcomplete.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}NoteImportCompleteLambda-${StageName}
+      CodeUri: importcomplete
+      Role: !GetAtt NoteImportCompleteLambdaRole.Arn
+
+  NoteImportCompleteLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${NoteImportCompleteLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  ErrorLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: ErrorLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ErrorLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: error.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ErrorLambda-${StageName}
+      CodeUri: error
+      Role: !GetAtt ErrorLambdaRole.Arn
+
+  ErrorLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ErrorLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  NoteImportStatesExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - states.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: NoteImportStatesExecutionPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt ConvertCSVLambda.Arn
+                  - !GetAtt FormatNotesLambda.Arn
+                  - !GetAtt ValidateNotesLambda.Arn
+                  - !GetAtt ImportIteratorLambda.Arn
+                  - !GetAtt PrepareNotesListLambda.Arn
+                  - !GetAtt ImportNotesLambda.Arn
+                  - !GetAtt NoteImportCompleteLambda.Arn
+                  - !GetAtt ErrorLambda.Arn
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !Sub ${ConvertCSVLambda.Arn}:*
+                  - !Sub ${FormatNotesLambda.Arn}:*
+                  - !Sub ${ValidateNotesLambda.Arn}:*
+                  - !Sub ${ImportIteratorLambda.Arn}:*
+                  - !Sub ${PrepareNotesListLambda.Arn}:*
+                  - !Sub ${ImportNotesLambda.Arn}:*
+                  - !Sub ${NoteImportCompleteLambda.Arn}:*
+                  - !Sub ${ErrorLambda.Arn}:*
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogDelivery
+                  - logs:GetLogDelivery
+                  - logs:UpdateLogDelivery
+                  - logs:DeleteLogDelivery
+                  - logs:ListLogDeliveries
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeLogGroups
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                  - xray:GetSamplingRules
+                  - xray:GetSamplingTargets
+                Resource: "*"
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  NoteImportStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub ${StackNamePrefix}NoteImportStateMachine-${StageName}
+      DefinitionString: !Sub
+        - |-
+          {
+            "Comment": "State machine for importing note notes.",
+            "StartAt": "SkipToNoteImport?",
+            "States": {
+              "SkipToNoteImport?": {
+                "Comment": "Whether to skip straight to note notes import next iteration",
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.skipToNoteImport",
+                    "BooleanEquals": true,
+                    "Next": "ImportIterator"
+                  }
+                ],
+                "Default": "ConvertCSVAndValidate"
+              },
+              "ConvertCSVAndValidate": {
+                "Type": "Task",
+                "Resource": "${convertCSVLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "IsValidCSV?"
+              },
+              "IsValidCSV?": {
+                "Comment": "If the CSV is Valid",
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.isValidCSV",
+                    "BooleanEquals": true,
+                    "Next": "FormatNotes"
+                  }
+                ],
+                "Default": "ErrorOccured"
+              },
+              "FormatNotes": {
+                "Type": "Task",
+                "Resource": "${formatNotesLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "ValidateNotes"
+              },
+              "ValidateNotes": {
+                "Type": "Task",
+                "Resource": "${validateNotesLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "IsValidNotes?"
+              },
+              "IsValidNotes?": {
+                "Comment": "If the notes in the request JSON are valid",
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.isValidNotes",
+                    "BooleanEquals": true,
+                    "Next": "ConfigureImportCount"
+                  }
+                ],
+                "Default": "ErrorOccured"
+              },
+              "ConfigureImportCount": {
+                "Type": "Pass",
+                "Result": {
+                    "index": -1,
+                    "step": 100
+                },
+                "ResultPath": "$.importiterator",
+                "Next": "ImportIterator"
+              },
+              "ImportIterator": {
+                "Type": "Task",
+                "Resource": "${importIteratorLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "ResultPath": "$.importiterator",
+                "Next": "IsNotesCountReached?"
+              },
+              "IsNotesCountReached?": {
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.importiterator.continue",
+                    "BooleanEquals": true,
+                    "Next": "PrepareNotesList"
+                  }
+                ],
+                "Default": "NoteImportComplete"
+              },
+              "PrepareNotesList": {
+                "Type": "Task",
+                "Resource": "${prepareNotesListLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "ImportAllNotes"
+              },
+              "ImportAllNotes": {
+                "Type": "Map",
+                "ItemsPath": "$.noteList",
+                "Parameters": {
+                  "list.$": "$$.Map.Item.Value",
+                  "validatedFileKey.$": "$.validatedFileKey",
+                  "doImportNoteExecution.$": "$.doImportNoteExecution",
+                  "BuildersApiFunctionArn.$": "$.BuildersApiFunctionArn",
+                  "SearchApiFunctionArn.$": "$.SearchApiFunctionArn",
+                  "ActivitiesApiFunctionArn.$": "$.ActivitiesApiFunctionArn"
+                },
+                "MaxConcurrency": 40,
+                "Catch": [
+                  {
+                    "ErrorEquals": [
+                      "States.ALL"
+                    ],
+                    "Next": "ErrorOccured"
+                  }
+                ],
+                "Iterator": {
+                  "StartAt": "ImportNotes",
+                  "States": {
+                    "ImportNotes": {
+                      "Type": "Task",
+                      "Resource": "${importNotesLambdaARN}",
+                      "TimeoutSeconds": 86400,
+                      "HeartbeatSeconds": 3600,
+                      "End": true
+                    }
+                  }
+                },
+                "ResultPath": null,
+                "Next": "ImportIterator"
+              },
+              "NoteImportComplete": {
+                "Type": "Task",
+                "Resource": "${importCompleteLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "EndProcess"
+              },
+              "ErrorOccured": {
+                "Type": "Task",
+                "Resource": "${errorLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "ImportFailed"
+              },
+              "ImportFailed": {
+                "Type": "Fail",
+                "Cause": "Invalid request/Exception occured",
+                "Error": "Request contains invalid or missing values/Exception"
+              },
+              "EndProcess": {
+                "Type": "Pass",
+                "End": true
+              }
+            }
+          }
+        - {
+            convertCSVLambdaARN: !GetAtt ConvertCSVLambda.Arn,
+            formatNotesLambdaARN: !GetAtt FormatNotesLambda.Arn,
+            validateNotesLambdaARN: !GetAtt ValidateNotesLambda.Arn,
+            importIteratorLambdaARN: !GetAtt ImportIteratorLambda.Arn,
+            prepareNotesListLambdaARN: !GetAtt PrepareNotesListLambda.Arn,
+            importNotesLambdaARN: !GetAtt ImportNotesLambda.Arn,
+            importCompleteLambdaARN: !GetAtt NoteImportCompleteLambda.Arn,
+            errorLambdaARN: !GetAtt ErrorLambda.Arn,
+          }
+      RoleArn: !GetAtt NoteImportStatesExecutionRole.Arn
+      LoggingConfiguration:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt NoteImportStateMachineLogGroup.Arn
+        IncludeExecutionData: true
+        Level: ALL
+      TracingConfiguration:
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: stepfunctions
+
+  NoteImportStateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/vendedlogs/states/${StackNamePrefix}NoteImport-${StageName}
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  StateMachineStartExecutionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      # ManagedPolicyName: !Sub ${StackNamePrefix}state-machine-start-execution-policy-${StageName}
+      Roles:
+        - !Ref StateMachineStartExecutionRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - states:StartExecution
+            Resource:
+              - !Ref NoteImportStateMachine
+          - Effect: Allow
+            Action:
+              - logs:CreateLogDelivery
+              - logs:GetLogDelivery
+              - logs:UpdateLogDelivery
+              - logs:DeleteLogDelivery
+              - logs:ListLogDeliveries
+              - logs:PutResourcePolicy
+              - logs:DescribeResourcePolicies
+              - logs:DescribeLogGroups
+            Resource: "*"
+
+  StateMachineStartExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      # RoleName: !Sub ${StackNamePrefix}state-machine-start-execution-role-${StageName}
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+Outputs:
+  NoteImportStateMachineArn:
+    Value: !GetAtt NoteImportStateMachine.Arn

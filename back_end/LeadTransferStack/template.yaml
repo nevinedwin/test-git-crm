@@ -1,0 +1,1486 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: "Hyphen CRM SAM Template"
+
+Parameters:
+  StageName:
+    Type: String
+  StackNamePrefix:
+    Type: String
+  BucketARN:
+    Type: String
+  IsEnableCustomDomain:
+    Type: String
+  SFTPCustomDomain:
+    Type: String
+  AwsSdkLayer:
+    Type: String
+  DynamoDBArn:
+    Type: String
+  FileManagerBucketARN:
+    Type: String
+  HyphenLambdaManagedPolicy:
+    Type: String
+  ElasticsearchDomain:
+    Type: String
+  ElasticsearchDomainEndpoint:
+    Type: String
+  HyphenCRMTransferServerVPC:
+    Type: String
+  HyphenCRMTransferServerSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+  HyphenCRMTransferServerElasticIPAllocationIds:
+    Type: List<String>
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+  NestedStackPrefix:
+    Type: String
+    Default: "leadTransfer-" 
+
+Conditions:
+  EnableCustomDomain: !Equals [!Ref IsEnableCustomDomain, "true"]
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 60
+    Layers:
+      - !Ref AwsSdkLayer
+    Environment:
+      Variables:
+        entitiesTableName: !Sub ${StackNamePrefix}entities-${StageName}-db
+        entitiesTableByEntityAndId: !Sub ${StackNamePrefix}byEntityAndIdIndex-${StageName}-db
+        entitiesTableByDataAndEntity: !Sub ${StackNamePrefix}byDataAndEntityIndex-${StageName}-db
+        STACK_PREFIX: !Ref StackNamePrefix
+        ES_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+        ES_REGION: !Ref AWS::Region
+        FILE_MANAGER_BUCKET_NAME: !Sub ${StackNamePrefix}frontend-${StageName}-s3
+    Tags:
+      Environment: !Ref StageName
+      Application: !Ref ApplicationTag
+      Owner: !Ref OwnerTag
+      Purpose: !Ref PurposeTag
+      Service: lambda
+Resources:
+  # Create a dedicated VPC with internet connectivity
+  # HyphenCRMTransferServerVPC:
+  #   Type: AWS::EC2::VPC
+  #   Properties:
+  #     CidrBlock: 10.11.12.0/24
+  #     EnableDnsSupport: true
+  #     EnableDnsHostnames: true
+  #     InstanceTenancy: default
+  #     Tags:
+  #       - Key: Name
+  #         Value: HyphenCRMTransferServerVPC
+  #       - Key: hyphen:devteam
+  #         Value: CRM
+  # HyphenCRMTransferServerVPCSubnet1:
+  #   Type: AWS::EC2::Subnet
+  #   Properties:
+  #     VpcId: !Ref HyphenCRMTransferServerVPC
+  #     CidrBlock: 10.11.12.0/25
+  #     AvailabilityZone: !Select
+  #       - 0
+  #       - !GetAZs
+  #         Ref: "AWS::Region"
+  #     MapPublicIpOnLaunch: true
+  #     Tags:
+  #       - Key: Name
+  #         Value: HyphenCRMTransferServerVPCSubnet1
+  #       - Key: hyphen:devteam
+  #         Value: CRM
+  # HyphenCRMTransferServerVPCSubnet2:
+  #   Type: AWS::EC2::Subnet
+  #   Properties:
+  #     VpcId: !Ref HyphenCRMTransferServerVPC
+  #     CidrBlock: 10.11.12.128/25
+  #     AvailabilityZone: !Select
+  #       - 1
+  #       - !GetAZs
+  #         Ref: "AWS::Region"
+  #     MapPublicIpOnLaunch: true
+  #     Tags:
+  #       - Key: Name
+  #         Value: HyphenCRMTransferServerVPCSubnet2
+  #       - Key: hyphen:devteam
+  #         Value: CRM
+  # HyphenCRMTransferServerVPCInternetGateway:
+  #   Type: AWS::EC2::InternetGateway
+  #   Properties:
+  #     Tags:
+  #       - Key: Name
+  #         Value: HyphenCRMTransferServerVPCInternetGateway
+  #       - Key: hyphen:devteam
+  #         Value: CRM
+  # HyphenCRMTransferServerVPCAttachGateway:
+  #   Type: AWS::EC2::VPCGatewayAttachment
+  #   Properties:
+  #     VpcId: !Ref HyphenCRMTransferServerVPC
+  #     InternetGatewayId: !Ref HyphenCRMTransferServerVPCInternetGateway
+  # HyphenCRMTransferServerVPCRouteTable:
+  #   Type: AWS::EC2::RouteTable
+  #   Properties:
+  #     VpcId: !Ref HyphenCRMTransferServerVPC
+  #     Tags:
+  #       - Key: Name
+  #         Value: HyphenCRMTransferServerVPCRouteTable
+  #       - Key: hyphen:devteam
+  #         Value: CRM
+  # HyphenCRMTransferServerVPCSubnet1RouteAssociaton:
+  #   Type: AWS::EC2::SubnetRouteTableAssociation
+  #   Properties:
+  #     SubnetId: !Ref HyphenCRMTransferServerVPCSubnet1
+  #     RouteTableId: !Ref HyphenCRMTransferServerVPCRouteTable
+  # HyphenCRMTransferServerVPCSubnet2RouteAssociaton:
+  #   Type: AWS::EC2::SubnetRouteTableAssociation
+  #   Properties:
+  #     SubnetId: !Ref HyphenCRMTransferServerVPCSubnet2
+  #     RouteTableId: !Ref HyphenCRMTransferServerVPCRouteTable
+  # HyphenCRMTransferServerVPCRoutetoInternet:
+  #   Type: AWS::EC2::Route
+  #   # DependsOn: sftpInternetGateway
+  #   Properties:
+  #     RouteTableId: !Ref HyphenCRMTransferServerVPCRouteTable
+  #     DestinationCidrBlock: 0.0.0.0/0
+  #     GatewayId: !Ref HyphenCRMTransferServerVPCInternetGateway
+  # HyphenCRMTransferServerEIP1:
+  #   Type: AWS::EC2::EIP
+  #   # DependsOn: HyphenCRMTransferServerVPC
+  #   Properties:
+  #     Domain: vpc
+  # HyphenCRMTransferServerEIP2:
+  #   Type: AWS::EC2::EIP
+  #   # DependsOn: HyphenCRMTransferServerVPC
+  #   Properties:
+  #     Domain: vpc
+
+  # Create security group for whitelisting IPs
+  HyphenCRMTransferServerEndpointSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow ssh access for restricted IPs
+      VpcId:
+        Ref: HyphenCRMTransferServerVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 52.36.213.193/32
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 52.25.97.247/32
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 52.25.252.69/32
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: ec2
+
+  # Create SFTP Server
+  HyphenCRMTransferServer:
+    Type: AWS::Transfer::Server
+    Properties:
+      Domain: S3
+      LoggingRole: !GetAtt TransferServerLoggingRole.Arn
+      Protocols:
+        - SFTP
+      # SecurityPolicyName: TransferSecurityPolicy-FIPS-2020-06
+      SecurityPolicyName: TransferSecurityPolicy-2020-06
+      EndpointDetails:
+        AddressAllocationIds: !Ref HyphenCRMTransferServerElasticIPAllocationIds
+        SecurityGroupIds:
+          - !GetAtt HyphenCRMTransferServerEndpointSG.GroupId
+        SubnetIds: !Ref HyphenCRMTransferServerSubnetIds
+        VpcId: !Ref HyphenCRMTransferServerVPC
+      EndpointType: VPC
+      IdentityProviderType: API_GATEWAY
+      IdentityProviderDetails:
+        InvocationRole: !GetAtt TransferIdentityProviderRole.Arn
+        Url: !Sub https://${TransferServerCustomIdentityAPI}.execute-api.${AWS::Region}.amazonaws.com/${StageName}
+      # No straightforward way to conditionally add tags.
+      # So changing the tag key and value based on EnableCustomDomain condition.
+      # If not EnableCustomDomain, then a tag with key with no-custom-domain and value "AWS::NoValue" is added as a placeholder.
+      Tags:
+        - Key:
+            !If [
+              EnableCustomDomain,
+              # aws:transfer:customHostname,
+              CustomSFTPHostName,
+              no-custom-domain,
+            ]
+          Value: !If [EnableCustomDomain, !Ref SFTPCustomDomain, no-domain]
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: transferfamily
+
+  TransferIdentityProviderRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: transfer.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: TransferCanInvokeThisApi
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - execute-api:Invoke
+                Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${TransferServerCustomIdentityAPI}/${StageName}/GET/*
+        - PolicyName: TransferCanReadThisApi
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - apigateway:GET
+                Resource: "*"
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  TransferServerCustomIdentityAPI:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: Transfer Family Secrets Manager Integration API
+      Description: API used for Transfer Family to access user information in Secrets Manager
+      FailOnWarnings: true
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: apigateway
+
+  ApiLoggingAccount:
+    Type: AWS::ApiGateway::Account
+    DependsOn:
+      - TransferServerCustomIdentityAPI
+    Properties:
+      CloudWatchRoleArn: !GetAtt ApiCloudWatchLogsRole.Arn
+
+  ApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      DeploymentId:
+        Ref: ApiDeployment
+      MethodSettings:
+        - DataTraceEnabled: false
+          HttpMethod: "*"
+          LoggingLevel: INFO
+          ResourcePath: "/*"
+      RestApiId: !Ref TransferServerCustomIdentityAPI
+      StageName: !Ref StageName
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: apigateway
+
+  ApiDeployment:
+    DependsOn:
+      - GetUserConfigRequest
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref TransferServerCustomIdentityAPI
+
+  ServersResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref TransferServerCustomIdentityAPI
+      ParentId: !GetAtt TransferServerCustomIdentityAPI.RootResourceId
+      PathPart: servers
+
+  ServerIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref TransferServerCustomIdentityAPI
+      ParentId: !Ref ServersResource
+      PathPart: "{serverId}"
+
+  UsersResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref TransferServerCustomIdentityAPI
+      ParentId: !Ref ServerIdResource
+      PathPart: users
+
+  UserNameResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref TransferServerCustomIdentityAPI
+      ParentId: !Ref UsersResource
+      PathPart: "{username}"
+
+  GetUserConfigResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref TransferServerCustomIdentityAPI
+      ParentId: !Ref UserNameResource
+      PathPart: config
+
+  GetUserConfigRequest:
+    Type: AWS::ApiGateway::Method
+    DependsOn: GetUserConfigResponseModel
+    Properties:
+      AuthorizationType: AWS_IAM
+      HttpMethod: GET
+      Integration:
+        Type: AWS
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetUserConfigLambda.Arn}/invocations
+        IntegrationResponses:
+          - StatusCode: 200
+        RequestTemplates:
+          application/json: |
+            {
+              "username": "$util.urlDecode($input.params('username'))",
+              "password": "$util.escapeJavaScript($input.params('Password')).replaceAll("\\'","'")",
+              "protocol": "$input.params('protocol')",
+              "serverId": "$input.params('serverId')",
+              "sourceIp": "$input.params('sourceIp')"
+            }
+      RequestParameters:
+        method.request.header.Password: false
+      ResourceId:
+        Ref: GetUserConfigResource
+      RestApiId:
+        Ref: TransferServerCustomIdentityAPI
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: UserConfigResponseModel
+
+  GetUserConfigResponseModel:
+    Type: AWS::ApiGateway::Model
+    Properties:
+      RestApiId:
+        Ref: TransferServerCustomIdentityAPI
+      ContentType: application/json
+      Description: API response for GetUserConfig
+      Name: UserConfigResponseModel
+      Schema:
+        "$schema": http://json-schema.org/draft-04/schema#
+        title: UserUserConfig
+        type: object
+        properties:
+          HomeDirectory:
+            type: string
+          Role:
+            type: string
+          Policy:
+            type: string
+          PublicKeys:
+            type: array
+            items:
+              type: string
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: LambdaSecretsPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:s-*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ApiCloudWatchLogsRole:
+    # Description: IAM role used by API Gateway to log API requests to CloudWatch
+    Type: AWS::IAM::Role
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - apigateway.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: /
+      ManagedPolicyArns:
+        - >-
+          arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  GetUserConfigLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: getuserconfig.main
+      CodeUri: getuserconfig
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}GetUserConfigLambda-${StageName}
+      Description: A function to lookup and return user data from AWS Secrets Manager.
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: nodejs20.x
+      Environment:
+        Variables:
+          SecretsManagerRegion: !Ref AWS::Region
+
+  GetUserConfigLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GetUserConfigLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch  
+
+  GetUserConfigLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:invokeFunction
+      FunctionName: !GetAtt GetUserConfigLambda.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${TransferServerCustomIdentityAPI}/*
+
+  TransferServerLoggingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSTransferLoggingAccess
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: transfer.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  TransferServerUserRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "transfer.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: "TransferServerUserRolePolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource:
+                  - !Ref BucketARN
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
+                  - s3:DeleteObjectVersion
+                  - s3:GetObjectVersion
+                  - s3:GetObjectACL
+                  - s3:PutObjectACL
+                Resource:
+                  - !Sub ${BucketARN}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  TransferImportLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: transferimport.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}TransferImportLambda-${StageName}
+      CodeUri: transferimport
+      Environment:
+        Variables:
+          LEAD_TRANSFER_STATE_MACHINE_ARN: !GetAtt LeadTransferStateMachine.Arn
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource:
+                - !Ref DynamoDBArn
+                - !Sub ${DynamoDBArn}/index/*
+            - Effect: Allow
+              Action:
+                - states:StartExecution
+              Resource:
+                - !GetAtt LeadTransferStateMachine.Arn
+
+  TransferImportLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${TransferImportLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch  
+
+  TransferImportExceptionLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: transferexception.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}TransferImportExceptionLambda-${StageName}
+      CodeUri: transferexception
+
+  TransferImportExceptionLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${TransferImportExceptionLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch     
+
+  TransferImportPostProcessingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "transfer.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: "TransferImportPostProcessingRolePolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt TransferImportLambda.Arn
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  IteratorLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  IteratorLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: iterator.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}IteratorLambda-${StageName}
+      CodeUri: iterator
+      Role: !GetAtt IteratorLambdaRole.Arn
+
+  IteratorLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${IteratorLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch  
+
+  ExceptionLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: ExceptionLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ExceptionLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: exception.main
+      CodeUri: exception
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ExceptionLambda-${StageName}
+      Role: !GetAtt ExceptionLambdaRole.Arn
+
+  ExceptionLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ExceptionLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  ImportSuccessLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: ImportSuccessLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ImportSuccessLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: importsuccess.main
+      CodeUri: importsuccess
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ImportSuccessLambda-${StageName}
+      Role: !GetAtt ImportSuccessLambdaRole.Arn
+
+  ImportSuccessLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ImportSuccessLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  GetLeadsLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: GetLeadsLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  GetLeadsLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: getleads.main
+      CodeUri: getleads
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}GetLeadsLambda-${StageName}
+      Role: !GetAtt GetLeadsLambdaRole.Arn
+
+  GetLeadsLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GetLeadsLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  LeadTransferStatesExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - states.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: LeadTransferStatesExecutionPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt GetImportEnabledHomebuildersLambda.Arn
+                  - !GetAtt GetLeadsLambda.Arn
+                  - !GetAtt ProcessLeadsLambda.Arn
+                  - !GetAtt ImportCustomerLambda.Arn
+                  - !GetAtt IteratorLambda.Arn
+                  - !GetAtt ExceptionLambda.Arn
+                  - !GetAtt ImportSuccessLambda.Arn
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !Sub ${GetImportEnabledHomebuildersLambda.Arn}:*
+                  - !Sub ${GetLeadsLambda.Arn}:*
+                  - !Sub ${ProcessLeadsLambda.Arn}:*
+                  - !Sub ${ImportCustomerLambda.Arn}:*
+                  - !Sub ${IteratorLambda.Arn}:*
+                  - !Sub ${ExceptionLambda.Arn}:*
+                  - !Sub ${ImportSuccessLambda.Arn}:*
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogDelivery
+                  - logs:GetLogDelivery
+                  - logs:UpdateLogDelivery
+                  - logs:DeleteLogDelivery
+                  - logs:ListLogDeliveries
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeLogGroups
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                  - xray:GetSamplingRules
+                  - xray:GetSamplingTargets
+                Resource: "*"
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ProcessLeadsLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ProcessLeadsLambdaRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - es:ESHttpPost
+                  - es:ESHttpPut
+                Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ProcessLeadsLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: processleads.main
+      CodeUri: processleads
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ProcessLeadsLambda-${StageName}
+      Role: !GetAtt ProcessLeadsLambdaRole.Arn
+
+  ProcessLeadsLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ProcessLeadsLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  ImportCustomerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ImportCustomerLambdaRolePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - SNS:Publish
+                Resource: !Sub arn:aws:sns:${AWS::Region}:${AWS::AccountId}:*
+              - Effect: Allow
+                Action:
+                  - execute-api:Invoke
+                Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*
+              - Effect: Allow
+                Action:
+                  - es:ESHttpPost
+                  - es:ESHttpPut
+                Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  ImportCustomerLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: importcustomer.main
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}ImportCustomerLambda-${StageName}
+      CodeUri: importcustomer
+      Role: !GetAtt ImportCustomerLambdaRole.Arn
+
+  ImportCustomerLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ImportCustomerLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  GetImportEnabledHomebuildersLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - !Ref HyphenLambdaManagedPolicy
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: GetImportEnabledHomebuildersLambdaRolePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - SNS:Publish
+                Resource: !Sub arn:aws:sns:${AWS::Region}:${AWS::AccountId}:*
+              - Effect: Allow
+                Action:
+                  - execute-api:Invoke
+                Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*
+              # - Effect: Allow
+              #   Action:
+              #     - es:ESHttpPost
+              #     - es:ESHttpPut
+              #   Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomain}/*
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub ${FileManagerBucketARN}/*
+              - Effect: Allow
+                Action:
+                  - states:StartExecution
+                Resource: "*"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+
+  GetImportEnabledHomebuildersLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: getconfig.main
+      CodeUri: getconfig
+      FunctionName: !Sub ${StackNamePrefix}${NestedStackPrefix}GetImportEnabledHomebuildersLambda-${StageName}
+      Role: !GetAtt GetImportEnabledHomebuildersLambdaRole.Arn
+
+  GetImportEnabledHomebuildersLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GetImportEnabledHomebuildersLambda}
+      RetentionInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  LeadTransferStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub ${StackNamePrefix}LeadTransferStateMachine-${StageName}
+      DefinitionString: !Sub
+        - |-
+          {
+            "Comment": "State machine for getting leads from Zillow",
+            "StartAt": "GetLeads",
+            "States": {              
+              "GetLeads": {
+                "Type": "Task",
+                "Resource": "${leadTransferArn}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "LeadsFound?"
+              },
+              "LeadsFound?": {
+                "Comment": "If there are leads found to be added to the system",
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.isLeadsFound",
+                    "BooleanEquals": false,
+                    "Next": "ErrorFound?"
+                  }
+                ],
+                "Default": "ConfigureCount"
+              },
+              "ErrorFound?": {
+                "Comment": "If there is an error in processing the xml",
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.isErrorFound",
+                    "BooleanEquals": true,
+                    "Next": "ExceptionOccured"
+                  }
+                ],
+                "Default": "EndProcess"
+              },
+              "ConfigureCount": {
+                "Type": "Pass",
+                "Result": {
+                    "index": -1,
+                    "step": 10
+                },
+                "ResultPath": "$.iterator",
+                "Next": "Iterator"
+              },
+              "Iterator": {
+                "Type": "Task",
+                "Resource": "${iteratorLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "ResultPath": "$.iterator",
+                "Next": "IsCountReached"
+              },
+              "IsCountReached": {
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.iterator.continue",
+                    "BooleanEquals": true,
+                    "Next": "ProcessLeads"
+                  }
+                ],
+                "Default": "ImportSuccess"
+              },                    
+              "ProcessLeads": {
+                "Type": "Task",
+                "Resource": "${processLeadsArn}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Catch": [
+                  {
+                    "ErrorEquals": [ "States.ALL" ],
+                    "Next": "ExceptionOccured"
+                  }
+                ],
+                "Next": "ValidList?"
+              },
+              "ValidList?": {
+                "Comment": "If the customer list contains valid fields",
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.doImport",
+                    "BooleanEquals": false,
+                    "Next": "ExceptionOccured"
+                  }
+                ],
+                "Default": "ImportAllCustomers"
+              },
+              "ImportAllCustomers": {
+                "Type": "Map",
+                "InputPath": "$.customersList",
+                "MaxConcurrency": 1,
+                "Catch": [
+                  {
+                    "ErrorEquals": [ "States.ALL" ],
+                    "Next": "ExceptionOccured"
+                  }
+                ],
+                "Iterator": {
+                  "StartAt": "ImportCustomer",
+                  "States": {
+                    "ImportCustomer": {
+                      "Type": "Task",
+                      "Resource": "${importCustomerArn}",
+                      "TimeoutSeconds": 86400,
+                      "HeartbeatSeconds": 3600,
+                      "End": true
+                    }
+                  }
+                },
+                "ResultPath": "$.resp",
+                "Next": "Iterator"
+              },
+              "ImportSuccess": {
+                "Type": "Task",
+                "Resource": "${importSuccessLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "EndProcess"
+              },
+              "ExceptionOccured": {
+                "Type": "Task",
+                "Resource": "${exceptionLambdaARN}",
+                "TimeoutSeconds": 86400,
+                "HeartbeatSeconds": 3600,
+                "Next": "InvalidRequest"
+              },
+              "InvalidRequest": {
+                "Type": "Fail",
+                "Cause": "Invalid request/Exception occured",
+                "Error": "Request contains invalid or missing values/Exception"
+              },
+              "EndProcess": {
+                "Type": "Pass",
+                "End": true
+              }
+            }
+          }
+        - {
+            configLambdaARN: !GetAtt GetImportEnabledHomebuildersLambda.Arn,
+            leadTransferArn: !GetAtt GetLeadsLambda.Arn,
+            processLeadsArn: !GetAtt ProcessLeadsLambda.Arn,
+            importCustomerArn: !GetAtt ImportCustomerLambda.Arn,
+            iteratorLambdaARN: !GetAtt IteratorLambda.Arn,
+            exceptionLambdaARN: !GetAtt ExceptionLambda.Arn,
+            importSuccessLambdaARN: !GetAtt ImportSuccessLambda.Arn,
+          }
+      RoleArn: !GetAtt LeadTransferStatesExecutionRole.Arn
+      LoggingConfiguration:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt LeadTransferStateMachineLogGroup.Arn
+        IncludeExecutionData: true
+        Level: ALL
+      TracingConfiguration:
+        Enabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: stepfunctions
+
+  LeadTransferStateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/vendedlogs/states/${StackNamePrefix}LeadTransfer-${StageName}
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: cloudwatch
+
+  StateMachineStartExecutionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      # ManagedPolicyName: !Sub ${StackNamePrefix}state-machine-start-execution-policy-${StageName}
+      Roles:
+        - !Ref StateMachineStartExecutionRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - states:StartExecution
+            Resource:
+              - !Ref LeadTransferStateMachine
+          - Effect: Allow
+            Action:
+              - logs:CreateLogDelivery
+              - logs:GetLogDelivery
+              - logs:UpdateLogDelivery
+              - logs:DeleteLogDelivery
+              - logs:ListLogDeliveries
+              - logs:PutResourcePolicy
+              - logs:DescribeResourcePolicies
+              - logs:DescribeLogGroups
+            Resource: "*"
+
+  StateMachineStartExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      # RoleName: !Sub ${StackNamePrefix}state-machine-start-execution-role-${StageName}
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: iam
+Outputs:
+  LeadTransferStateMachineArn:
+    Value: !GetAtt LeadTransferStateMachine.Arn
+  HyphenCRMTransferServerId:
+    Value: !GetAtt HyphenCRMTransferServer.ServerId
+  TransferImportPostProcessingRoleARN:
+    Value: !GetAtt TransferImportPostProcessingRole.Arn
+  TransferServerUserRoleARN:
+    Value: !GetAtt TransferServerUserRole.Arn
+  TransferWorkflowExecutionRoleARN:
+    Value: !GetAtt TransferImportPostProcessingRole.Arn
+  TransferWorkflowLambdaARN:
+    Value: !GetAtt TransferImportLambda.Arn
+  TransferWorkflowExceptionLambdaARN:
+    Value: !GetAtt TransferImportExceptionLambda.Arn

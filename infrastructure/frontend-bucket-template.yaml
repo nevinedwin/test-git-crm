@@ -1,0 +1,199 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: "Hyphen CRM SAM Template"
+
+Parameters:
+  # StageName:
+  #   Type: String
+  s3BucketName:
+    Type: String
+  # s3CRRBucketName:
+  #   Type: String
+  # S3CRRFunctionArn:
+  #   Type: String
+  CFCanonicalUserId:
+    Type: String
+  FileManagerS3Name:
+    Type: String
+  DomainName:
+    Type: String
+  IsEnableCustomDomain:
+    Type: String
+  # S3CRRRegion:
+  #   Type: String
+  StageName:
+    Type: String
+  ApplicationTag:
+    Type: String
+  OwnerTag:
+    Type: String
+  PurposeTag:
+    Type: String
+# Conditions:
+#   IsProd: !Equals [!Ref StageName, prod]
+Conditions:
+  EnableCustomDomain: !Equals [!Ref IsEnableCustomDomain, "true"]
+Resources:
+  # FrontEndCRRBucket:
+  #   # Condition: IsProd
+  #   Type: "Custom::FrontEndCRRBucket"
+  #   Properties:
+  #     ServiceToken: !Ref S3CRRFunctionArn
+  #     BucketName: !Ref s3CRRBucketName
+  #     IsWebsiteConfig: true
+  #     RegionName: !Ref S3CRRRegion
+
+  # FrontEndCRRRole:
+  #   # Condition: IsProd
+  #   Type: "AWS::IAM::Role"
+  #   Properties:
+  #     AssumeRolePolicyDocument:
+  #       Version: "2012-10-17"
+  #       Statement:
+  #         - Effect: "Allow"
+  #           Principal:
+  #             Service: "s3.amazonaws.com"
+  #           Action: "sts:AssumeRole"
+
+  # FrontEndCRRRolePolicy:
+  #   # Condition: IsProd
+  #   Type: AWS::IAM::Policy
+  #   Properties:
+  #     PolicyName: FrontEndCRRRolePolicy
+  #     Roles:
+  #       - !Ref FrontEndCRRRole
+  #     PolicyDocument:
+  #       Statement:
+  #         - Effect: Allow
+  #           Action:
+  #             - s3:GetObjectVersionForReplication
+  #             - s3:GetObjectVersionAcl
+  #           Resource:
+  #             - !Sub ${FrontEndBucket.Arn}/*
+  #         - Effect: Allow
+  #           Action:
+  #             - s3:ListBucket
+  #             - s3:GetReplicationConfiguration
+  #           Resource:
+  #             - !Sub ${FrontEndBucket.Arn}
+  #         - Effect: Allow
+  #           Action:
+  #             - s3:ReplicateObject
+  #             - s3:ReplicateDelete
+  #             - s3:ReplicateTags
+  #             - s3:GetObjectVersionTagging
+  #           Resource: !Sub ${FrontEndCRRBucket.Arn}/*
+  FrontEndBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref s3BucketName
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - "*"
+            AllowedMethods:
+              - PUT
+              - POST
+            AllowedOrigins:
+              - !If [EnableCustomDomain, !Ref DomainName, "*"]
+            Id: !Sub ${FileManagerS3Name}-cors-rule
+      LifecycleConfiguration:
+        Rules:
+          - Id: PinpointExportFileRule
+            Prefix: Exports
+            Status: Enabled
+            ExpirationInDays: 365
+            Transitions:
+              - TransitionInDays: 90
+                StorageClass: GLACIER
+          - Id: TransferKeyRule
+            Prefix: transfer/key
+            Status: Enabled
+            ExpirationInDays: 1
+          - Id: DeleteOldEmails
+            Status: Enabled
+            Prefix: emails/
+            ExpirationInDays: 10
+      # AccessControl: PublicRead
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      # ReplicationConfiguration:
+      #   Role:
+      #     !GetAtt FrontEndCRRRole.Arn
+      #     # !If [IsProd, !GetAtt FrontEndCRRRole.Arn, !Ref "AWS::NoValue"]
+      #   Rules:
+      #     - Destination:
+      #         Bucket:
+      #           !GetAtt FrontEndCRRBucket.Arn
+      #           # !If [IsProd, !GetAtt FrontEndCRRBucket.Arn, !Ref "AWS::NoValue"]
+      #       Prefix: ""
+      #       # Status: !If [IsProd, Enabled, !Ref "AWS::NoValue"]
+      #       Status: Enabled
+      Tags:
+        - Key: Environment
+          Value: !Ref StageName
+        - Key: Application
+          Value: !Ref ApplicationTag
+        - Key: Owner
+          Value: !Ref OwnerTag
+        - Key: Purpose
+          Value: !Ref PurposeTag
+        - Key: Service
+          Value: s3
+
+  FrontEndBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket:
+        Ref: FrontEndBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              CanonicalUser:
+                !Ref CFCanonicalUserId
+                # !Sub "arn:aws:iam::cloudfront:user/${CRMOriginAccessIdentity}"
+            Action: s3:GetObject
+            Resource:
+              - !Sub "${FrontEndBucket.Arn}/*"
+          - Sid: "AllowSESPuts"
+            Effect: "Allow"
+            Principal:
+              Service: "ses.amazonaws.com"
+            Action: "s3:PutObject"
+            Resource: !Sub "${FrontEndBucket.Arn}/*"
+            Condition:
+              StringLike:
+                "AWS:SourceArn": "arn:aws:ses:*"
+          - Sid: "AllowLambdaRead"
+            Effect: "Allow"
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "s3:GetObject"
+            Resource: !Sub "${FrontEndBucket.Arn}/emails/*"
+
+Outputs:
+  FrontEndBucket:
+    Description: "FrontEndBucket"
+    Value: !Ref FrontEndBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-FrontEndBucket"
+  FrontEndBucketARN:
+    Description: "FrontEndBucketARN"
+    Value: !GetAtt FrontEndBucket.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-FrontEndBucketARN"
+  FrontEndBucketDomainName:
+    Description: "FrontEndBucketDomainName"
+    Value: !GetAtt FrontEndBucket.RegionalDomainName
+    Export:
+      Name: !Sub "${AWS::StackName}-FrontEndBucketDomainName"

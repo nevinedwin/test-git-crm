@@ -1,0 +1,169 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "VisualEditor0",
+            "Effect": "Allow",
+            "Action": "ec2:DeleteSecurityGroup",
+            "Resource": "arn:aws:ec2:us-west-2:748787612401:security-group/*",
+            "Condition": {
+                "StringEqualsIfExists": {
+                    "aws:ResourceTag/Owner": "contractor",
+                    "aws:ResourceTag/Application": "crm",
+                    "aws:ResourceTag/hyphen:devteam": "CRM",
+                    "aws:ResourceTag/Purpose": "deployed"
+                }
+            }
+        },
+        {
+            "Sid": "VisualEditor1",
+            "Effect": "Allow",
+            "Action": "ec2:DeleteVpcEndpoints",
+            "Resource": "arn:aws:ec2:us-west-2:748787612401:vpc-endpoint/*",
+            "Condition": {
+                "StringLikeIfExists": {
+                    "ec2:VpceServiceName": "com.amazonaws.us-west-2.transfer.server.*"
+                }
+            }
+        },
+        {
+            "Sid": "VisualEditor2",
+            "Effect": "Allow",
+            "Action": [
+                "ec2:AuthorizeSecurityGroupIngress",
+                "transfer:StopServer",
+                "ec2:DeleteTags",
+                "states:DescribeStateMachine",
+                "ec2:CreateTags",
+                "transfer:UpdateServer",
+                "transfer:StartServer",
+                "s3:GetObjectAcl",
+                "s3:GetObject",
+                "cloudfront:ListTagsForResource",
+                "ec2:CreateSecurityGroup",
+                "ec2:CreateVpcEndpoint",
+                "s3:GetObjectVersionAcl",
+                "s3:GetObjectTagging",
+                "ec2:AssociateAddress",
+                "ec2:ModifyVpcEndpoint",
+                "s3:GetObjectVersion",
+                "sqs:SetQueueAttributes"
+            ],
+            "Resource": [
+                "arn:aws:ec2:us-west-2:748787612401:security-group/*",
+                "arn:aws:ec2:us-west-2:748787612401:subnet/*",
+                "arn:aws:ec2:us-west-2:748787612401:network-interface/*",
+                "arn:aws:ec2:us-west-2:748787612401:vpc/*",
+                "arn:aws:ec2:us-west-2:748787612401:vpc-endpoint/*",
+                "arn:aws:ec2:us-west-2:748787612401:elastic-ip/*",
+                "arn:aws:ec2:us-west-2:748787612401:route-table/*",
+                "arn:aws:cloudfront::748787612401:streaming-distribution/*",
+                "arn:aws:cloudfront::748787612401:distribution/*",
+                "arn:aws:transfer:us-west-2:748787612401:server/*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-LeadAPIStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-DataExportStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-DataImportStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-ReportsStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-CleanupStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-SegmentCountStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-LeadTransferStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-StageDateStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-EmailActivityUpdateStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-AnalyticsStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-PinpointAnalyticsStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-CustomerImportStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-NoteImportStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-EndpointStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-CobuyerImportStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-DRFCStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-DeleteProfileDataStateMachine-*",
+                "arn:aws:s3:::hyphen-dev-cloudformation-artifacts/*",
+                "arn:aws:sqs:us-west-2:748787612401:aws-crm-*-sqs"
+            ]
+        },
+        {
+            "Sid": "VisualEditor3",
+            "Effect": "Allow",
+            "Action": [
+                "transfer:UntagResource",
+                "transfer:DescribeServer",
+                "s3:PutLifecycleConfiguration",
+                "transfer:TagResource",
+                "route53:AssociateVPCWithHostedZone"
+            ],
+            "Resource": [
+                "arn:aws:transfer:us-west-2:748787612401:server/*",
+                "arn:aws:ec2:us-west-2:748787612401:vpc/*",
+                "arn:aws:s3:::aws-crm-frontend-*-s3",
+                "arn:aws:s3:::aws-crm-filemanager-*-s3"
+            ]
+        },
+        {
+            "Sid": "VisualEditor4",
+            "Effect": "Allow",
+            "Action": [
+                "states:UpdateStateMachine",
+                "states:DeleteStateMachine",
+                "states:UntagResource",
+                "states:TagResource",
+                "states:CreateStateMachine"
+            ],
+            "Resource": [
+                "arn:aws:states:us-west-2:748787612401:activity:*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-LeadAPIStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-DataExportStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-DataImportStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-ReportsStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-CleanupStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-SegmentCountStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-LeadTransferStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-StageDateStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-EmailActivityUpdateStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-AnalyticsStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-PinpointAnalyticsStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-CustomerImportStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-NoteImportStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-EndpointStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-CobuyerImportStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-DRFCStateMachine-*",
+                "arn:aws:states:us-west-2:748787612401:stateMachine:aws-crm-DeleteProfileDataStateMachine-*"
+            ],
+            "Condition": {
+                "StringEqualsIfExists": {
+                    "aws:ResourceTag/Owner": "contractor",
+                    "aws:ResourceTag/Application": "crm",
+                    "aws:ResourceTag/hyphen:devteam": "CRM",
+                    "aws:ResourceTag/Purpose": "deployed"
+                }
+            }
+        },
+        {
+            "Sid": "VisualEditor5",
+            "Effect": "Allow",
+            "Action": "transfer:DeleteServer",
+            "Resource": "arn:aws:transfer:us-west-2:748787612401:server/*",
+            "Condition": {
+                "StringEqualsIfExists": {
+                    "aws:ResourceTag/Owner": "contractor",
+                    "aws:ResourceTag/Application": "crm",
+                    "aws:ResourceTag/hyphen:devteam": "CRM",
+                    "aws:ResourceTag/Purpose": "deployed"
+                }
+            }
+        },
+        {
+            "Sid": "VisualEditor6",
+            "Effect": "Allow",
+            "Action": [
+                "ec2:DescribeAddresses",
+                "ec2:DescribeNetworkInterfaces",
+                "ec2:DescribeVpcEndpoints",
+                "transfer:CreateServer",
+                "ec2:DescribeSubnets",
+                "ec2:DescribeSecurityGroups",
+                "tag:TagResources"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
